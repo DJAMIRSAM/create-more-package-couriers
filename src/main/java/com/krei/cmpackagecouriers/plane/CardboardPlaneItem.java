@@ -5,8 +5,10 @@ import com.krei.cmpackagecouriers.ServerConfig;
 import com.krei.cmpackagecouriers.marker.AddressMarkerHandler;
 import com.simibubi.create.content.logistics.box.PackageItem;
 import com.simibubi.create.content.logistics.box.PackageStyles;
+import com.simibubi.create.content.logistics.depot.EjectorBlockEntity;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
@@ -17,6 +19,7 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.*;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.phys.Vec3;
 
@@ -109,13 +112,6 @@ public class CardboardPlaneItem extends Item implements EjectorLaunchEffect {
         if (level.isClientSide())
             return false;
 
-        float yaw = switch (level.getBlockState(pos).getValue(BlockStateProperties.HORIZONTAL_FACING)) {
-            case NORTH -> 180f;
-            case SOUTH -> 0f;
-            case WEST  -> 90f;
-            default    -> -90f;
-        };
-
         String address = getAddress(stack);
         ItemStack packageItem = getPackage(stack);
         if (packageItem.isEmpty()) {
@@ -126,10 +122,40 @@ public class CardboardPlaneItem extends Item implements EjectorLaunchEffect {
         MinecraftServer server = level.getServer();
         if (server != null) {
             CardboardPlaneEntity plane = new CardboardPlaneEntity(level);
-            plane.setPos(Vec3.atCenterOf(pos).add(0,1,0));
+            Vec3 spawnPosition = Vec3.atCenterOf(pos).add(0, 1, 0);
+            Vec3 launchVector = null;
+            if (level.getBlockEntity(pos) instanceof EjectorBlockEntity ejector) {
+                Vec3 ejectorPos = ejector.getLaunchedItemLocation(0.0F);
+                if (ejectorPos != null) {
+                    spawnPosition = ejectorPos;
+                }
+                launchVector = ejector.getLaunchedItemMotion(0.0F);
+            }
+            plane.setPos(spawnPosition.x(), spawnPosition.y(), spawnPosition.z());
             plane.setPackage(packageItem);
             plane.setUnpack(isPreOpened(stack));
-            plane.shootFromRotation(-37.5F, yaw, 0.0F, 0.8F, 1.0F);
+            if (launchVector != null && launchVector.lengthSqr() > 1.0E-4) {
+                plane.shoot(launchVector.x, launchVector.y, launchVector.z, (float) plane.getSpeed(), 0.0F);
+            } else {
+                BlockState state = level.getBlockState(pos);
+                Direction facing = Direction.NORTH;
+                if (state.hasProperty(BlockStateProperties.HORIZONTAL_FACING)) {
+                    facing = state.getValue(BlockStateProperties.HORIZONTAL_FACING);
+                } else if (state.hasProperty(BlockStateProperties.FACING)) {
+                    Direction potential = state.getValue(BlockStateProperties.FACING);
+                    if (potential.getAxis().isHorizontal()) {
+                        facing = potential;
+                    }
+                }
+
+                float yaw = switch (facing) {
+                    case NORTH -> 180f;
+                    case SOUTH -> 0f;
+                    case WEST  -> 90f;
+                    default    -> -90f;
+                };
+                plane.shootFromRotation(-37.5F, yaw, 0.0F, (float) plane.getSpeed(), 1.0F);
+            }
 
             ServerPlayer serverPlayer = server.getPlayerList().getPlayerByName(address);
             if (serverPlayer != null && ServerConfig.planePlayerTargets) {

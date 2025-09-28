@@ -1,6 +1,7 @@
 package com.krei.cmpackagecouriers.plane;
 
 import com.krei.cmpackagecouriers.PackageCouriers;
+import com.krei.cmpackagecouriers.marker.AddressMarkerHandler;
 import com.simibubi.create.AllItems;
 import com.simibubi.create.content.logistics.box.PackageEntity;
 import com.simibubi.create.content.logistics.box.PackageItem;
@@ -29,7 +30,6 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.projectile.ThrowableItemProjectile;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
@@ -200,30 +200,22 @@ public class CardboardPlaneEntity extends ThrowableItemProjectile {
     }
 
     protected void onReachedTarget() {
-        if (targetEntityCached != null  // Assumes entity is cached
-                && targetEntityCached instanceof Player player) {
-            if (!level().isClientSide()) {
-                if (unpack) {
-                    ItemStackHandler stacks = PackageItem.getContents(this.getPackage());
-                    for (int slot = 0; slot < stacks.getSlots(); slot++) {
-                        ItemStack stack = stacks.getStackInSlot(slot);
-                        player.getInventory().placeItemBackInInventory(stack);
+        if (!level().isClientSide()) {
+            ItemStack packageStack = this.getPackage();
+
+            if (!packageStack.isEmpty() && !tryDeliverToDepot(packageStack)) {
+                if (targetEntityCached != null && targetEntityCached instanceof Player player) {
+                    if (unpack) {
+                        ItemStackHandler stacks = PackageItem.getContents(packageStack);
+                        for (int slot = 0; slot < stacks.getSlots(); slot++) {
+                            ItemStack stack = stacks.getStackInSlot(slot);
+                            player.getInventory().placeItemBackInInventory(stack);
+                        }
+                    } else {
+                        player.getInventory().placeItemBackInInventory(packageStack);
                     }
                 } else {
-                    player.getInventory().placeItemBackInInventory(this.getPackage());
-                }
-            }
-        } else if (targetPos != null) {
-            if (!level().isClientSide()) {
-                BlockPos blockPos = new BlockPos((int)Math.floor(this.targetPos.x()), (int)Math.floor(this.targetPos.y()), (int)Math.floor(this.targetPos.z()));
-                if (level().getBlockState(blockPos).getBlock() instanceof DepotBlock
-                        && level().getBlockEntity(blockPos) instanceof DepotBlockEntity depot
-                        && depot.getHeldItem().is(Items.AIR)) {
-                    depot.setHeldItem(this.getPackage());
-                    depot.notifyUpdate();
-                    //TODO: Belts and hoppers as targets
-                } else {
-                    level().addFreshEntity(PackageEntity.fromItemStack(level(), this.position(), this.getPackage()));
+                    level().addFreshEntity(PackageEntity.fromItemStack(level(), this.position(), packageStack));
                 }
             }
         }
@@ -252,6 +244,54 @@ public class CardboardPlaneEntity extends ThrowableItemProjectile {
                 1.0F,
                 0.75F
         );
+    }
+
+    private boolean tryDeliverToDepot(ItemStack packageStack) {
+        if (!(level() instanceof ServerLevel serverLevel)) {
+            return false;
+        }
+
+        if (targetPos != null) {
+            BlockPos targetBlockPos = BlockPos.containing(this.targetPos);
+            if (deliverToDepotAt(serverLevel, targetBlockPos, packageStack)) {
+                return true;
+            }
+        }
+
+        String address = PackageItem.getAddress(packageStack);
+        if (address.isBlank()) {
+            return false;
+        }
+
+        AddressMarkerHandler.MarkerTarget bestTarget = null;
+        double bestDistance = Double.MAX_VALUE;
+
+        for (AddressMarkerHandler.MarkerTarget marker : AddressMarkerHandler.markerMap.values()) {
+            if (marker.level == serverLevel && PackageItem.matchAddress(address, marker.address)) {
+                double distance = Vec3.atCenterOf(marker.pos).distanceToSqr(this.position());
+                if (distance < bestDistance) {
+                    bestDistance = distance;
+                    bestTarget = marker;
+                }
+            }
+        }
+
+        if (bestTarget != null && bestDistance <= 256 && isChunkTicking(serverLevel, Vec3.atCenterOf(bestTarget.pos))) {
+            return deliverToDepotAt(serverLevel, bestTarget.pos, packageStack);
+        }
+
+        return false;
+    }
+
+    private boolean deliverToDepotAt(ServerLevel level, BlockPos blockPos, ItemStack packageStack) {
+        if (level.getBlockState(blockPos).getBlock() instanceof DepotBlock
+                && level.getBlockEntity(blockPos) instanceof DepotBlockEntity depot
+                && depot.getHeldItem().isEmpty()) {
+            depot.setHeldItem(packageStack.copy());
+            depot.notifyUpdate();
+            return true;
+        }
+        return false;
     }
 
     public void setTarget(@Nullable Entity targetEntity) {
@@ -287,14 +327,27 @@ public class CardboardPlaneEntity extends ThrowableItemProjectile {
 
     @Override
     public ItemStack getItem() {
-        return this.getEntityData().get(DATA_ITEM);
+        ItemStack planeStack = this.getEntityData().get(DATA_ITEM);
+        if (planeStack.isEmpty()) {
+            planeStack = new ItemStack(PackageCouriers.CARDBOARD_PLANE_ITEM.get());
+            this.getEntityData().set(DATA_ITEM, planeStack);
+        }
+        return planeStack;
     }
 
     @Override
     public void readAdditionalSaveData(CompoundTag compoundTag) {
         super.readAdditionalSaveData(compoundTag);
-        ItemStack box = ItemStack.of(compoundTag.getCompound("Box"));
-        this.setPackage(box);
+        if (compoundTag.contains("Unpack")) {
+            unpack = compoundTag.getBoolean("Unpack");
+        }
+
+        if (compoundTag.contains("Box")) {
+            ItemStack box = ItemStack.of(compoundTag.getCompound("Box"));
+            this.setPackage(box);
+        } else {
+            this.resetPlaneStack();
+        }
 
         if (compoundTag.hasUUID("TargetEntity")) {
             targetEntityUUID = compoundTag.getUUID("TargetEntity");
@@ -313,10 +366,6 @@ public class CardboardPlaneEntity extends ThrowableItemProjectile {
             // Illegal state
         }
 
-        if (compoundTag.contains("Unpack")) {
-            unpack = compoundTag.getBoolean("Unpack");
-        }
-
         if (targetPos != null && targetPosLevel == null) {
             targetPosLevel = level().dimension();
         }
@@ -328,7 +377,9 @@ public class CardboardPlaneEntity extends ThrowableItemProjectile {
     public void addAdditionalSaveData(CompoundTag compoundTag) {
         super.addAdditionalSaveData(compoundTag);
         ItemStack box = this.getPackage();
-        compoundTag.put("Box", box.save(new CompoundTag()));
+        if (!box.isEmpty()) {
+            compoundTag.put("Box", box.save(new CompoundTag()));
+        }
         compoundTag.putBoolean("Unpack", unpack);
 
         if (targetEntityUUID != null) {
@@ -346,12 +397,20 @@ public class CardboardPlaneEntity extends ThrowableItemProjectile {
     }
 
     public ItemStack getPackage() {
-        return this.getEntityData().get(DATA_ITEM);
+        ItemStack planeStack = this.getItem();
+        if (planeStack.getItem() instanceof CardboardPlaneItem) {
+            return CardboardPlaneItem.getPackage(planeStack);
+        }
+        return ItemStack.EMPTY;
     }
 
     public void setPackage(ItemStack stack) {
-        if (stack.getItem() instanceof PackageItem)
-            this.getEntityData().set(DATA_ITEM, stack.copy());
+        ItemStack planeStack = new ItemStack(PackageCouriers.CARDBOARD_PLANE_ITEM.get());
+        if (stack.getItem() instanceof PackageItem) {
+            CardboardPlaneItem.setPackage(planeStack, stack);
+        }
+        CardboardPlaneItem.setPreOpened(planeStack, this.unpack);
+        this.getEntityData().set(DATA_ITEM, planeStack);
     }
 
     public boolean isUnpack() {
@@ -360,6 +419,12 @@ public class CardboardPlaneEntity extends ThrowableItemProjectile {
 
     public void setUnpack(boolean unpack) {
         this.unpack = unpack;
+        ItemStack planeStack = this.getItem().copy();
+        if (!(planeStack.getItem() instanceof CardboardPlaneItem)) {
+            planeStack = new ItemStack(PackageCouriers.CARDBOARD_PLANE_ITEM.get());
+        }
+        CardboardPlaneItem.setPreOpened(planeStack, unpack);
+        this.getEntityData().set(DATA_ITEM, planeStack);
     }
 
     public double getSpeed() {
@@ -380,4 +445,10 @@ public class CardboardPlaneEntity extends ThrowableItemProjectile {
     }
 
     public static void init() {}
+
+    private void resetPlaneStack() {
+        ItemStack planeStack = new ItemStack(PackageCouriers.CARDBOARD_PLANE_ITEM.get());
+        CardboardPlaneItem.setPreOpened(planeStack, this.unpack);
+        this.getEntityData().set(DATA_ITEM, planeStack);
+    }
 }
