@@ -287,14 +287,23 @@ public class CardboardPlaneEntity extends ThrowableItemProjectile {
 
     @Override
     public ItemStack getItem() {
-        return this.getEntityData().get(DATA_ITEM);
+        return this.getPlaneStack();
     }
 
     @Override
     public void readAdditionalSaveData(CompoundTag compoundTag) {
         super.readAdditionalSaveData(compoundTag);
-        ItemStack box = ItemStack.of(compoundTag.getCompound("Box"));
-        this.setPackage(box);
+        ItemStack planeStack = ItemStack.EMPTY;
+        if (compoundTag.contains("Plane")) {
+            planeStack = ItemStack.of(compoundTag.getCompound("Plane"));
+        } else if (compoundTag.contains("Box")) {
+            ItemStack box = ItemStack.of(compoundTag.getCompound("Box"));
+            this.setPackage(box);
+            planeStack = this.getPlaneStack();
+        }
+        if (!planeStack.isEmpty()) {
+            this.setPlaneStack(planeStack);
+        }
 
         if (compoundTag.hasUUID("TargetEntity")) {
             targetEntityUUID = compoundTag.getUUID("TargetEntity");
@@ -327,8 +336,14 @@ public class CardboardPlaneEntity extends ThrowableItemProjectile {
     @Override
     public void addAdditionalSaveData(CompoundTag compoundTag) {
         super.addAdditionalSaveData(compoundTag);
+        ItemStack planeStack = this.getPlaneStack();
+        if (!planeStack.isEmpty()) {
+            compoundTag.put("Plane", planeStack.save(new CompoundTag()));
+        }
         ItemStack box = this.getPackage();
-        compoundTag.put("Box", box.save(new CompoundTag()));
+        if (!box.isEmpty()) {
+            compoundTag.put("Box", box.save(new CompoundTag()));
+        }
         compoundTag.putBoolean("Unpack", unpack);
 
         if (targetEntityUUID != null) {
@@ -346,12 +361,14 @@ public class CardboardPlaneEntity extends ThrowableItemProjectile {
     }
 
     public ItemStack getPackage() {
-        return this.getEntityData().get(DATA_ITEM);
+        return CardboardPlaneItem.getPackage(this.getPlaneStack());
     }
 
     public void setPackage(ItemStack stack) {
-        if (stack.getItem() instanceof PackageItem)
-            this.getEntityData().set(DATA_ITEM, stack.copy());
+        if (stack.getItem() instanceof PackageItem) {
+            ItemStack planeStack = CardboardPlaneItem.withPackage(stack);
+            this.setPlaneStack(planeStack);
+        }
     }
 
     public boolean isUnpack() {
@@ -368,6 +385,18 @@ public class CardboardPlaneEntity extends ThrowableItemProjectile {
 
     public void setSpeed(double speed) {
         this.speed = speed;
+    }
+
+    public ItemStack getPlaneStack() {
+        return this.getEntityData().get(DATA_ITEM);
+    }
+
+    public void setPlaneStack(ItemStack stack) {
+        if (stack.isEmpty()) {
+            this.getEntityData().set(DATA_ITEM, ItemStack.EMPTY);
+        } else if (stack.getItem() instanceof CardboardPlaneItem) {
+            this.getEntityData().set(DATA_ITEM, stack.copy());
+        }
     }
 
     public static boolean isChunkTicking(Level level, Vec3 pos) {

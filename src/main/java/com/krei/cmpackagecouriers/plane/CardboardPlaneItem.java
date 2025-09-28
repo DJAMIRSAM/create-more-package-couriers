@@ -5,6 +5,7 @@ import com.krei.cmpackagecouriers.ServerConfig;
 import com.krei.cmpackagecouriers.marker.AddressMarkerHandler;
 import com.simibubi.create.content.logistics.box.PackageItem;
 import com.simibubi.create.content.logistics.box.PackageStyles;
+import com.simibubi.create.content.logistics.depot.EjectorBlockEntity;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
@@ -40,7 +41,8 @@ public class CardboardPlaneItem extends Item implements EjectorLaunchEffect {
                 && this.getUseDuration(stack) - timeLeft >= 10
                 && !level.isClientSide()) {
 
-            String address = getAddress(stack);
+            String fullAddress = getFullAddress(stack);
+            String playerAddress = getAddress(stack);
             ItemStack packageItem = getPackage(stack);
             if (packageItem.isEmpty()) {
                 packageItem = PackageStyles.getRandomBox();
@@ -50,22 +52,24 @@ public class CardboardPlaneItem extends Item implements EjectorLaunchEffect {
             MinecraftServer server = level.getServer();
             if (server != null) {
                 CardboardPlaneEntity plane = new CardboardPlaneEntity(level);
-                plane.setPos(player.getX(), player.getEyeY()-0.1f, player.getZ());
+                plane.setPos(player.getX(), player.getEyeY() - 0.1f, player.getZ());
                 plane.setPackage(packageItem);
                 plane.setUnpack(isPreOpened(stack));
                 plane.shootFromRotation(player, player.getXRot(), player.getYRot(), 0.0F, 0.8F, 1.0F);
 
-                ServerPlayer serverPlayer = server.getPlayerList().getPlayerByName(address);
                 boolean launched = false;
+                ServerPlayer serverPlayer = null;
+                if (ServerConfig.planePlayerTargets && !playerAddress.isBlank()) {
+                    serverPlayer = server.getPlayerList().getPlayerByName(playerAddress);
+                }
                 if (serverPlayer != null && ServerConfig.planePlayerTargets) {
                     plane.setTarget(serverPlayer);
                     level.addFreshEntity(plane);
                     stack.shrink(1);
                     launched = true;
                 } else {
-                    AddressMarkerHandler.MarkerTarget target = AddressMarkerHandler.getMarkerTarget(address);
-                    if (target != null && ServerConfig.planeLocationTargets) {
-                        plane.setTarget(target.pos, target.level);
+                    if (tryAssignLocationTarget(plane, fullAddress)
+                            || (!playerAddress.equals(fullAddress) && tryAssignLocationTarget(plane, playerAddress))) {
                         level.addFreshEntity(plane);
                         stack.shrink(1);
                         launched = true;
@@ -109,14 +113,8 @@ public class CardboardPlaneItem extends Item implements EjectorLaunchEffect {
         if (level.isClientSide())
             return false;
 
-        float yaw = switch (level.getBlockState(pos).getValue(BlockStateProperties.HORIZONTAL_FACING)) {
-            case NORTH -> 180f;
-            case SOUTH -> 0f;
-            case WEST  -> 90f;
-            default    -> -90f;
-        };
-
-        String address = getAddress(stack);
+        String fullAddress = getFullAddress(stack);
+        String playerAddress = getAddress(stack);
         ItemStack packageItem = getPackage(stack);
         if (packageItem.isEmpty()) {
             packageItem = PackageStyles.getRandomBox();
@@ -126,26 +124,57 @@ public class CardboardPlaneItem extends Item implements EjectorLaunchEffect {
         MinecraftServer server = level.getServer();
         if (server != null) {
             CardboardPlaneEntity plane = new CardboardPlaneEntity(level);
-            plane.setPos(Vec3.atCenterOf(pos).add(0,1,0));
             plane.setPackage(packageItem);
             plane.setUnpack(isPreOpened(stack));
-            plane.shootFromRotation(-37.5F, yaw, 0.0F, 0.8F, 1.0F);
+            Vec3 launchPos = Vec3.atCenterOf(pos).add(0, 1, 0);
+            Vec3 motion = null;
+            if (level.getBlockEntity(pos) instanceof EjectorBlockEntity ejector) {
+                launchPos = ejector.getLaunchedItemLocation(0f);
+                motion = ejector.getLaunchedItemMotion(0f);
+            }
+            plane.setPos(launchPos.x, launchPos.y, launchPos.z);
+            if (motion != null) {
+                float velocity = (float) motion.length();
+                if (velocity > 0.0F) {
+                    plane.shoot(motion.x, motion.y, motion.z, velocity, 0.0F);
+                } else {
+                    plane.setDeltaMovement(motion);
+                }
+            } else {
+                float yaw = switch (level.getBlockState(pos).getValue(BlockStateProperties.HORIZONTAL_FACING)) {
+                    case NORTH -> 180f;
+                    case SOUTH -> 0f;
+                    case WEST -> 90f;
+                    default -> -90f;
+                };
+                plane.shootFromRotation(-37.5F, yaw, 0.0F, 0.8F, 1.0F);
+            }
 
-            ServerPlayer serverPlayer = server.getPlayerList().getPlayerByName(address);
+            ServerPlayer serverPlayer = null;
+            if (ServerConfig.planePlayerTargets && !playerAddress.isBlank()) {
+                serverPlayer = server.getPlayerList().getPlayerByName(playerAddress);
+            }
             if (serverPlayer != null && ServerConfig.planePlayerTargets) {
                 plane.setTarget(serverPlayer);
                 level.addFreshEntity(plane);
                 return true;
-            } else {
-                AddressMarkerHandler.MarkerTarget target = AddressMarkerHandler.getMarkerTarget(address);
-                if (target != null && ServerConfig.planeLocationTargets) {
-                    plane.setTarget(target.pos, target.level);
-                    level.addFreshEntity(plane);
-                    return true;
-                }
+            } else if (tryAssignLocationTarget(plane, fullAddress)
+                    || (!playerAddress.equals(fullAddress) && tryAssignLocationTarget(plane, playerAddress))) {
+                level.addFreshEntity(plane);
+                return true;
             }
         }
         return false;
+    }
+
+    private static boolean tryAssignLocationTarget(CardboardPlaneEntity plane, String address) {
+        if (!ServerConfig.planeLocationTargets || address.isBlank())
+            return false;
+        AddressMarkerHandler.MarkerTarget target = AddressMarkerHandler.getMarkerTarget(address);
+        if (target == null)
+            return false;
+        plane.setTarget(target.pos, target.level);
+        return true;
     }
 
     public static ItemStack withPackage(ItemStack box) {
@@ -176,14 +205,17 @@ public class CardboardPlaneItem extends Item implements EjectorLaunchEffect {
     }
 
     public static String getAddress(ItemStack plane) {
+        String address = getFullAddress(plane);
+        int atIndex = address.lastIndexOf('@');
+        if (atIndex != -1 && atIndex + 1 < address.length()) {
+            return address.substring(atIndex + 1);
+        }
+        return address;
+    }
+
+    public static String getFullAddress(ItemStack plane) {
         if (plane.getItem() instanceof CardboardPlaneItem) {
-            // added handling of @ in address to alow adress chaining and identifying player names
-            String address = PackageItem.getAddress(getPackage(plane));
-            int atIndex = address.indexOf('@');
-            if (atIndex != -1) {
-                address = address.substring(atIndex + 1);
-            }
-            return address;
+            return PackageItem.getAddress(getPackage(plane));
         }
         return "";
     }
