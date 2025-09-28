@@ -29,7 +29,6 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.projectile.ThrowableItemProjectile;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
@@ -216,14 +215,15 @@ public class CardboardPlaneEntity extends ThrowableItemProjectile {
         } else if (targetPos != null) {
             if (!level().isClientSide()) {
                 BlockPos blockPos = new BlockPos((int)Math.floor(this.targetPos.x()), (int)Math.floor(this.targetPos.y()), (int)Math.floor(this.targetPos.z()));
+                ItemStack packageStack = this.getPackage();
                 if (level().getBlockState(blockPos).getBlock() instanceof DepotBlock
                         && level().getBlockEntity(blockPos) instanceof DepotBlockEntity depot
-                        && depot.getHeldItem().is(Items.AIR)) {
-                    depot.setHeldItem(this.getPackage());
+                        && depot.getHeldItem().isEmpty()) {
+                    depot.setHeldItem(packageStack);
                     depot.notifyUpdate();
                     //TODO: Belts and hoppers as targets
                 } else {
-                    level().addFreshEntity(PackageEntity.fromItemStack(level(), this.position(), this.getPackage()));
+                    level().addFreshEntity(PackageEntity.fromItemStack(level(), this.position(), packageStack));
                 }
             }
         }
@@ -286,11 +286,6 @@ public class CardboardPlaneEntity extends ThrowableItemProjectile {
     }
 
     @Override
-    public ItemStack getItem() {
-        return this.getEntityData().get(DATA_ITEM);
-    }
-
-    @Override
     public void readAdditionalSaveData(CompoundTag compoundTag) {
         super.readAdditionalSaveData(compoundTag);
         ItemStack box = ItemStack.of(compoundTag.getCompound("Box"));
@@ -316,6 +311,8 @@ public class CardboardPlaneEntity extends ThrowableItemProjectile {
         if (compoundTag.contains("Unpack")) {
             unpack = compoundTag.getBoolean("Unpack");
         }
+
+        setUnpack(unpack);
 
         if (targetPos != null && targetPosLevel == null) {
             targetPosLevel = level().dimension();
@@ -345,13 +342,34 @@ public class CardboardPlaneEntity extends ThrowableItemProjectile {
         }
     }
 
+    @Override
+    public ItemStack getItem() {
+        return getPlaneStack();
+    }
+
+    private ItemStack getPlaneStack() {
+        ItemStack stack = this.getEntityData().get(DATA_ITEM);
+        if (stack.isEmpty()) {
+            stack = new ItemStack(PackageCouriers.CARDBOARD_PLANE_ITEM.get());
+            this.getEntityData().set(DATA_ITEM, stack);
+        }
+        return stack;
+    }
+
     public ItemStack getPackage() {
-        return this.getEntityData().get(DATA_ITEM);
+        ItemStack planeStack = getPlaneStack();
+        if (planeStack.getItem() instanceof CardboardPlaneItem)
+            return CardboardPlaneItem.getPackage(planeStack);
+        return ItemStack.EMPTY;
     }
 
     public void setPackage(ItemStack stack) {
-        if (stack.getItem() instanceof PackageItem)
-            this.getEntityData().set(DATA_ITEM, stack.copy());
+        ItemStack planeStack = new ItemStack(PackageCouriers.CARDBOARD_PLANE_ITEM.get());
+        if (stack.getItem() instanceof PackageItem) {
+            CardboardPlaneItem.setPackage(planeStack, stack.copy());
+        }
+        CardboardPlaneItem.setPreOpened(planeStack, this.unpack);
+        this.getEntityData().set(DATA_ITEM, planeStack);
     }
 
     public boolean isUnpack() {
@@ -360,6 +378,11 @@ public class CardboardPlaneEntity extends ThrowableItemProjectile {
 
     public void setUnpack(boolean unpack) {
         this.unpack = unpack;
+        ItemStack planeStack = getPlaneStack().copy();
+        if (planeStack.getItem() instanceof CardboardPlaneItem) {
+            CardboardPlaneItem.setPreOpened(planeStack, unpack);
+            this.getEntityData().set(DATA_ITEM, planeStack);
+        }
     }
 
     public double getSpeed() {

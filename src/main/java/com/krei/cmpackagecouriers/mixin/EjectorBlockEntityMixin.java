@@ -16,7 +16,7 @@ public abstract class EjectorBlockEntityMixin {
         if (stack.getItem() instanceof EjectorLaunchEffect ejectable) {
             EjectorBlockEntity be = (EjectorBlockEntity) (Object) this;
             if (ejectable.onEject(stack, be.getLevel(), be.getBlockPos()))
-                cir.setReturnValue(false);
+                cir.setReturnValue(true);
         }
     }
 }
