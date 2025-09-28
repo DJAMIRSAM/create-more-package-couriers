@@ -1,7 +1,6 @@
 package com.krei.cmpackagecouriers.plane;
 
 import com.krei.cmpackagecouriers.PackageCouriers;
-import com.krei.cmpackagecouriers.compat.cmpackagepipebomb.PackagePipebombCompat;
 import com.simibubi.create.AllItems;
 import com.simibubi.create.content.logistics.box.PackageEntity;
 import com.simibubi.create.content.logistics.box.PackageItem;
@@ -16,7 +15,9 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
@@ -25,14 +26,14 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.entity.projectile.Projectile;
+import net.minecraft.world.entity.projectile.ThrowableItemProjectile;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
-import net.neoforged.fml.ModList;
-import net.neoforged.neoforge.items.ItemStackHandler;
+import net.minecraftforge.items.ItemStackHandler;
 
 import javax.annotation.Nullable;
 import java.util.Collections;
@@ -44,7 +45,7 @@ import java.util.UUID;
 // TODO: Use the Ender Pearl chunk loading mechanic
 // NOTE: We could implement this by adding functionality to ejectors
 // NOTE: We could implement this by using still entities and rendering ghosts
-public class CardboardPlaneEntity extends Projectile {
+public class CardboardPlaneEntity extends ThrowableItemProjectile {
     private static final EntityDataAccessor<ItemStack> DATA_ITEM = SynchedEntityData
             .defineId(CardboardPlaneEntity.class, EntityDataSerializers.ITEM_STACK);
 
@@ -57,16 +58,12 @@ public class CardboardPlaneEntity extends Projectile {
     public float oldDeltaYaw = 0;
     public boolean unpack = false;
 
-    public CardboardPlaneEntity(EntityType<? extends Projectile> entityType, Level level) {
+    public CardboardPlaneEntity(EntityType<? extends ThrowableItemProjectile> entityType, Level level) {
         super(entityType, level);
     }
 
     public CardboardPlaneEntity(Level level) {
         super(PackageCouriers.CARDBOARD_PLANE_ENTITY.get(), level);
-    }
-
-    public static CardboardPlaneEntity createEmpty(EntityType<? extends CardboardPlaneEntity> entityType, Level level) {
-        return new CardboardPlaneEntity(entityType, level);
     }
 
     // NOTE: Might require own implementation for noclip and to avoid unnecessary nbt data
@@ -210,13 +207,7 @@ public class CardboardPlaneEntity extends Projectile {
                     ItemStackHandler stacks = PackageItem.getContents(this.getPackage());
                     for (int slot = 0; slot < stacks.getSlots(); slot++) {
                         ItemStack stack = stacks.getStackInSlot(slot);
-                        PackageCouriers.LOGGER.debug(stack+"");
-                        if (ModList.get().isLoaded("cmpackagepipebomb")
-                                &&PackagePipebombCompat.isRigged(stack)) {
-                            PackagePipebombCompat.spawnRigged(stack, level(), this.getX(), this.getY(), this.getZ());
-                        } else {
-                            player.getInventory().placeItemBackInInventory(stack);
-                        }
+                        player.getInventory().placeItemBackInInventory(stack);
                     }
                 } else {
                     player.getInventory().placeItemBackInInventory(this.getPackage());
@@ -256,7 +247,7 @@ public class CardboardPlaneEntity extends Projectile {
         level().playSound(
                 null,
                 this.position().x(), this.position().y(), this.position().z(),
-                SoundEvents.WIND_CHARGE_BURST.value(),
+                SoundEvents.PLAYER_LEVELUP,
                 SoundSource.NEUTRAL,
                 1.0F,
                 0.75F
@@ -285,14 +276,24 @@ public class CardboardPlaneEntity extends Projectile {
     }
 
     @Override
-    protected void defineSynchedData(SynchedEntityData.Builder builder) {
-        builder.define(DATA_ITEM, ItemStack.EMPTY);
+    protected void defineSynchedData() {
+        this.getEntityData().define(DATA_ITEM, ItemStack.EMPTY);
+    }
+
+    @Override
+    protected Item getDefaultItem() {
+        return PackageCouriers.CARDBOARD_PLANE_ITEM.get();
+    }
+
+    @Override
+    public ItemStack getItem() {
+        return this.getEntityData().get(DATA_ITEM);
     }
 
     @Override
     public void readAdditionalSaveData(CompoundTag compoundTag) {
         super.readAdditionalSaveData(compoundTag);
-        ItemStack box = ItemStack.parseOptional(level().registryAccess(), compoundTag.getCompound("Box"));
+        ItemStack box = ItemStack.of(compoundTag.getCompound("Box"));
         this.setPackage(box);
 
         if (compoundTag.hasUUID("TargetEntity")) {
@@ -302,10 +303,22 @@ public class CardboardPlaneEntity extends Projectile {
             double y = compoundTag.getDouble("TargetPosY");
             double z = compoundTag.getDouble("TargetPosZ");
             targetPos = new Vec3(x, y, z);
-        } else if (compoundTag.contains("Unpack")) {
-            unpack = compoundTag.getBoolean("Unpack");
+            if (compoundTag.contains("TargetPosDim")) {
+                ResourceLocation dimensionId = ResourceLocation.tryParse(compoundTag.getString("TargetPosDim"));
+                if (dimensionId != null) {
+                    targetPosLevel = ResourceKey.create(Registries.DIMENSION, dimensionId);
+                }
+            }
         } else {
             // Illegal state
+        }
+
+        if (compoundTag.contains("Unpack")) {
+            unpack = compoundTag.getBoolean("Unpack");
+        }
+
+        if (targetPos != null && targetPosLevel == null) {
+            targetPosLevel = level().dimension();
         }
 
         refreshDimensions();
@@ -315,7 +328,7 @@ public class CardboardPlaneEntity extends Projectile {
     public void addAdditionalSaveData(CompoundTag compoundTag) {
         super.addAdditionalSaveData(compoundTag);
         ItemStack box = this.getPackage();
-        compoundTag.put("Box", box.saveOptional(level().registryAccess()));
+        compoundTag.put("Box", box.save(new CompoundTag()));
         compoundTag.putBoolean("Unpack", unpack);
 
         if (targetEntityUUID != null) {
@@ -324,6 +337,9 @@ public class CardboardPlaneEntity extends Projectile {
             compoundTag.putDouble("TargetPosX", targetPos.x());
             compoundTag.putDouble("TargetPosY", targetPos.y());
             compoundTag.putDouble("TargetPosZ", targetPos.z());
+            if (targetPosLevel != null) {
+                compoundTag.putString("TargetPosDim", targetPosLevel.location().toString());
+            }
         } else {
             // Illegal State
         }
@@ -335,7 +351,7 @@ public class CardboardPlaneEntity extends Projectile {
 
     public void setPackage(ItemStack stack) {
         if (stack.getItem() instanceof PackageItem)
-            this.getEntityData().set(DATA_ITEM, stack);
+            this.getEntityData().set(DATA_ITEM, stack.copy());
     }
 
     public boolean isUnpack() {

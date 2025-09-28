@@ -3,7 +3,6 @@ package com.krei.cmpackagecouriers.mixin;
 import com.krei.cmpackagecouriers.marker.AddressMarkerHandler;
 import com.krei.cmpackagecouriers.plane.CardboardPlaneEntity;
 import com.simibubi.create.content.logistics.depot.DepotBlock;
-import net.createmod.catnip.data.Iterate;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.level.Level;
@@ -33,7 +32,8 @@ public abstract class SignBlockEntityMixin {
 
             if (level.getBlockState(targetPos).getBlock() instanceof DepotBlock
                     && CardboardPlaneEntity.isChunkTicking(level, new Vec3(targetPos.getX(), targetPos.getY(), targetPos.getZ()))) {
-                for (boolean front : Iterate.trueAndFalse) {
+                for (int i = 0; i < 2; i++) {
+                    boolean front = i == 0;
                     SignText text = sign.getText(front);
                     StringBuilder address = new StringBuilder();
                     for (Component component : text.getMessages(false)) {

@@ -5,10 +5,9 @@ import com.krei.cmpackagecouriers.ServerConfig;
 import com.krei.cmpackagecouriers.marker.AddressMarkerHandler;
 import com.simibubi.create.content.logistics.box.PackageItem;
 import com.simibubi.create.content.logistics.box.PackageStyles;
-import com.simibubi.create.foundation.item.render.SimpleCustomRenderer;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.NonNullList;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
@@ -17,21 +16,19 @@ import net.minecraft.world.InteractionResultHolder;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.*;
-import net.minecraft.world.item.component.ItemContainerContents;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.phys.Vec3;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
-import net.neoforged.neoforge.client.extensions.common.IClientItemExtensions;
 
 import java.util.List;
-import java.util.function.Consumer;
 
 // Copied and Altered from TridentItem
 // NOTE: Might need to remove projectileItem interface
 // NOTE: Using a compass with target in an item frame or placard to set a coordinate address
 public class CardboardPlaneItem extends Item implements EjectorLaunchEffect {
+
+    private static final String TAG_PACKAGE = "PlanePackage";
+    private static final String TAG_PREOPENED = "PlanePreOpened";
 
     public CardboardPlaneItem(Properties p) {
         super(p.stacksTo(1));
@@ -40,15 +37,12 @@ public class CardboardPlaneItem extends Item implements EjectorLaunchEffect {
     @Override
     public void releaseUsing(ItemStack stack, Level level, LivingEntity entityLiving, int timeLeft) {
         if (entityLiving instanceof Player player
-                && this.getUseDuration(stack, entityLiving) - timeLeft >= 10
+                && this.getUseDuration(stack) - timeLeft >= 10
                 && !level.isClientSide()) {
 
             String address = getAddress(stack);
-            ItemStack packageItem;
-            ItemContainerContents container = stack.get(PackageCouriers.PLANE_PACKAGE);
-            if (container != null && container.getStackInSlot(0).getItem() instanceof PackageItem) {
-                packageItem = container.getStackInSlot(0);
-            } else {
+            ItemStack packageItem = getPackage(stack);
+            if (packageItem.isEmpty()) {
                 packageItem = PackageStyles.getRandomBox();
                 // TODO: Do some exception because this shouldn't happen
             }
@@ -58,23 +52,28 @@ public class CardboardPlaneItem extends Item implements EjectorLaunchEffect {
                 CardboardPlaneEntity plane = new CardboardPlaneEntity(level);
                 plane.setPos(player.getX(), player.getEyeY()-0.1f, player.getZ());
                 plane.setPackage(packageItem);
-                plane.setUnpack(stack.getOrDefault(PackageCouriers.PRE_OPENED, false));
+                plane.setUnpack(isPreOpened(stack));
                 plane.shootFromRotation(player, player.getXRot(), player.getYRot(), 0.0F, 0.8F, 1.0F);
 
                 ServerPlayer serverPlayer = server.getPlayerList().getPlayerByName(address);
+                boolean launched = false;
                 if (serverPlayer != null && ServerConfig.planePlayerTargets) {
                     plane.setTarget(serverPlayer);
                     level.addFreshEntity(plane);
                     stack.shrink(1);
+                    launched = true;
                 } else {
                     AddressMarkerHandler.MarkerTarget target = AddressMarkerHandler.getMarkerTarget(address);
                     if (target != null && ServerConfig.planeLocationTargets) {
                         plane.setTarget(target.pos, target.level);
                         level.addFreshEntity(plane);
                         stack.shrink(1);
+                        launched = true;
                     }
                 }
-                player.displayClientMessage(Component.translatable(PackageCouriers.MODID + ".message.no_address"), true);
+                if (!launched) {
+                    player.displayClientMessage(Component.translatable(PackageCouriers.MODID + ".message.no_address"), true);
+                }
             }
         }
     }
@@ -82,13 +81,16 @@ public class CardboardPlaneItem extends Item implements EjectorLaunchEffect {
     @Override
     public InteractionResultHolder<ItemStack> use(Level level, Player player, InteractionHand hand) {
         if (player.isCrouching()) {
-            ItemStack box = CardboardPlaneItem.getPackage(player.getItemInHand(hand));
-            player.getItemInHand(hand).shrink(1);
-            player.getInventory().placeItemBackInInventory(box);
-            player.getInventory().placeItemBackInInventory(PackageCouriers.CARDBOARD_PLANE_PARTS_ITEM.asStack());
-        } else {
-            player.startUsingItem(hand);
+            if (!level.isClientSide()) {
+                ItemStack stack = player.getItemInHand(hand);
+                ItemStack box = CardboardPlaneItem.getPackage(stack);
+                stack.shrink(1);
+                player.getInventory().placeItemBackInInventory(box);
+                player.getInventory().placeItemBackInInventory(new ItemStack(PackageCouriers.CARDBOARD_PLANE_PARTS_ITEM.get()));
+            }
+            return InteractionResultHolder.sidedSuccess(player.getItemInHand(hand), level.isClientSide());
         }
+        player.startUsingItem(hand);
         return InteractionResultHolder.consume(player.getItemInHand(hand));
     }
 
@@ -98,7 +100,7 @@ public class CardboardPlaneItem extends Item implements EjectorLaunchEffect {
     }
 
     @Override
-    public int getUseDuration(ItemStack stack, LivingEntity entity) {
+    public int getUseDuration(ItemStack stack) {
         return 72000;
     }
 
@@ -115,11 +117,8 @@ public class CardboardPlaneItem extends Item implements EjectorLaunchEffect {
         };
 
         String address = getAddress(stack);
-        ItemStack packageItem;
-        ItemContainerContents container = stack.get(PackageCouriers.PLANE_PACKAGE);
-        if (container != null && container.getStackInSlot(0).getItem() instanceof PackageItem) {
-            packageItem = container.getStackInSlot(0);
-        } else {
+        ItemStack packageItem = getPackage(stack);
+        if (packageItem.isEmpty()) {
             packageItem = PackageStyles.getRandomBox();
             // TODO: Do some exception because this shouldn't happen
         }
@@ -129,7 +128,7 @@ public class CardboardPlaneItem extends Item implements EjectorLaunchEffect {
             CardboardPlaneEntity plane = new CardboardPlaneEntity(level);
             plane.setPos(Vec3.atCenterOf(pos).add(0,1,0));
             plane.setPackage(packageItem);
-            plane.setUnpack(stack.getOrDefault(PackageCouriers.PRE_OPENED, false));
+            plane.setUnpack(isPreOpened(stack));
             plane.shootFromRotation(-37.5F, yaw, 0.0F, 0.8F, 1.0F);
 
             ServerPlayer serverPlayer = server.getPlayerList().getPlayerByName(address);
@@ -150,23 +149,30 @@ public class CardboardPlaneItem extends Item implements EjectorLaunchEffect {
     }
 
     public static ItemStack withPackage(ItemStack box) {
-        ItemStack plane = PackageCouriers.CARDBOARD_PLANE_ITEM.asStack();
+        ItemStack plane = new ItemStack(PackageCouriers.CARDBOARD_PLANE_ITEM.get());
         setPackage(plane, box);
         return plane;
     }
 
     public static void setPackage(ItemStack plane, ItemStack box) {
+        if (!(plane.getItem() instanceof CardboardPlaneItem))
+            return;
         if (box.getItem() instanceof PackageItem) {
-            ItemContainerContents container = ItemContainerContents.fromItems(NonNullList.of(ItemStack.EMPTY, box.copy()));
-            plane.set(PackageCouriers.PLANE_PACKAGE, container);
+            CompoundTag tag = plane.getOrCreateTag();
+            tag.put(TAG_PACKAGE, box.save(new CompoundTag()));
+        } else {
+            plane.removeTagKey(TAG_PACKAGE);
         }
     }
 
     public static ItemStack getPackage(ItemStack plane) {
-        ItemContainerContents container = plane.get(PackageCouriers.PLANE_PACKAGE);
-        if (container == null)
+        if (!(plane.getItem() instanceof CardboardPlaneItem))
             return ItemStack.EMPTY;
-        return container.getStackInSlot(0);
+        CompoundTag tag = plane.getTag();
+        if (tag == null || !tag.contains(TAG_PACKAGE))
+            return ItemStack.EMPTY;
+        CompoundTag packageTag = tag.getCompound(TAG_PACKAGE);
+        return ItemStack.of(packageTag);
     }
 
     public static String getAddress(ItemStack plane) {
@@ -183,30 +189,28 @@ public class CardboardPlaneItem extends Item implements EjectorLaunchEffect {
     }
 
     public static void setPreOpened(ItemStack plane, boolean preopened) {
-        if (plane.getItem() instanceof CardboardPlaneItem
-                && plane.get(PackageCouriers.PLANE_PACKAGE) instanceof ItemContainerContents container
-                && PackageItem.isPackage(container.getStackInSlot(0))) {
-            plane.set(PackageCouriers.PRE_OPENED, preopened);
+        if (plane.getItem() instanceof CardboardPlaneItem) {
+            plane.getOrCreateTag().putBoolean(TAG_PREOPENED, preopened);
         }
     }
 
+    public static boolean isPreOpened(ItemStack plane) {
+        if (!(plane.getItem() instanceof CardboardPlaneItem))
+            return false;
+        CompoundTag tag = plane.getTag();
+        return tag != null && tag.getBoolean(TAG_PREOPENED);
+    }
+
     @Override
-    public void appendHoverText(ItemStack stack, TooltipContext context, List<Component> tooltipComponents, TooltipFlag tooltipFlag) {
+    public void appendHoverText(ItemStack stack, Level level, List<Component> tooltipComponents, TooltipFlag tooltipFlag) {
         ItemStack box = getPackage(stack);
-        if (box != null) {
-            if (stack.getOrDefault(PackageCouriers.PRE_OPENED, false))
+        if (!box.isEmpty()) {
+            if (isPreOpened(stack))
                 tooltipComponents.add(Component.translatable("tooltip.cmpackagecouriers.cardboard_plane.preopened")
                         .withStyle(ChatFormatting.AQUA));
-            box.getItem().appendHoverText(box, context, tooltipComponents, tooltipFlag);
+            box.getItem().appendHoverText(box, level, tooltipComponents, tooltipFlag);
         }
         else
-            super.appendHoverText(stack, context, tooltipComponents, tooltipFlag);
-    }
-
-    @SuppressWarnings("removal")
-    @Override
-    @OnlyIn(Dist.CLIENT)
-    public void initializeClient(Consumer<IClientItemExtensions> consumer) {
-        consumer.accept(SimpleCustomRenderer.create(this, new CardboardPlaneItemRenderer()));
+            super.appendHoverText(stack, level, tooltipComponents, tooltipFlag);
     }
 }

@@ -4,9 +4,9 @@ import com.krei.cmpackagecouriers.PackageCouriers;
 import com.simibubi.create.content.logistics.box.PackageItem;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.Level;
-import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.fml.common.EventBusSubscriber;
-import net.neoforged.neoforge.event.tick.ServerTickEvent;
+import net.minecraftforge.event.TickEvent;
+import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.fml.common.Mod.EventBusSubscriber;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -29,7 +29,9 @@ public class AddressMarkerHandler {
     }
 
     @SubscribeEvent
-    public static void serverTick(ServerTickEvent.Post event) {
+    public static void serverTick(TickEvent.ServerTickEvent event) {
+        if (event.phase != TickEvent.Phase.END)
+            return;
         Iterator<Map.Entry<MarkerTarget, MarkerTarget>> iterator = markerMap.entrySet().iterator();
         while (iterator.hasNext()) {
             Map.Entry<MarkerTarget, MarkerTarget> entry = iterator.next();
