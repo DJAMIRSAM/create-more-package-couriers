@@ -29,7 +29,6 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.projectile.ThrowableItemProjectile;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
@@ -38,6 +37,14 @@ import net.minecraftforge.items.ItemStackHandler;
 import javax.annotation.Nullable;
 import java.util.Collections;
 import java.util.UUID;
+
+import net.minecraft.core.Direction;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.entity.SignBlockEntity;
+import net.minecraft.world.level.block.entity.SignText;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.WallSignBlock;
 
 // NOTE: Maybe replace synced entity data with a normal field
 // TODO: sync targetPos to increase entity update interval
@@ -57,6 +64,7 @@ public class CardboardPlaneEntity extends ThrowableItemProjectile {
     public float newDeltaYaw = 0;
     public float oldDeltaYaw = 0;
     public boolean unpack = false;
+    private ItemStack packageStack = ItemStack.EMPTY;
 
     public CardboardPlaneEntity(EntityType<? extends ThrowableItemProjectile> entityType, Level level) {
         super(entityType, level);
@@ -215,15 +223,17 @@ public class CardboardPlaneEntity extends ThrowableItemProjectile {
             }
         } else if (targetPos != null) {
             if (!level().isClientSide()) {
-                BlockPos blockPos = new BlockPos((int)Math.floor(this.targetPos.x()), (int)Math.floor(this.targetPos.y()), (int)Math.floor(this.targetPos.z()));
-                if (level().getBlockState(blockPos).getBlock() instanceof DepotBlock
+                BlockPos blockPos = BlockPos.containing(this.targetPos);
+                BlockState blockState = level().getBlockState(blockPos);
+                if (blockState.getBlock() instanceof DepotBlock
                         && level().getBlockEntity(blockPos) instanceof DepotBlockEntity depot
-                        && depot.getHeldItem().is(Items.AIR)) {
-                    depot.setHeldItem(this.getPackage());
+                        && depot.getHeldItem().isEmpty()
+                        && this.depotHasMatchingAddress(blockPos)) {
+                    depot.setHeldItem(this.getPackage().copy());
                     depot.notifyUpdate();
                     //TODO: Belts and hoppers as targets
                 } else {
-                    level().addFreshEntity(PackageEntity.fromItemStack(level(), this.position(), this.getPackage()));
+                    level().addFreshEntity(PackageEntity.fromItemStack(level(), this.position(), this.getPackage().copy()));
                 }
             }
         }
@@ -277,7 +287,7 @@ public class CardboardPlaneEntity extends ThrowableItemProjectile {
 
     @Override
     protected void defineSynchedData() {
-        this.getEntityData().define(DATA_ITEM, ItemStack.EMPTY);
+        this.getEntityData().define(DATA_ITEM, new ItemStack(PackageCouriers.CARDBOARD_PLANE_ITEM.get()));
     }
 
     @Override
@@ -346,12 +356,24 @@ public class CardboardPlaneEntity extends ThrowableItemProjectile {
     }
 
     public ItemStack getPackage() {
-        return this.getEntityData().get(DATA_ITEM);
+        return packageStack;
     }
 
     public void setPackage(ItemStack stack) {
-        if (stack.getItem() instanceof PackageItem)
-            this.getEntityData().set(DATA_ITEM, stack.copy());
+        if (stack.getItem() instanceof PackageItem) {
+            this.packageStack = stack.copy();
+        } else {
+            this.packageStack = ItemStack.EMPTY;
+        }
+        this.refreshVisualStack();
+    }
+
+    private void refreshVisualStack() {
+        ItemStack visual = new ItemStack(PackageCouriers.CARDBOARD_PLANE_ITEM.get());
+        if (!this.packageStack.isEmpty() && this.packageStack.getItem() instanceof PackageItem) {
+            CardboardPlaneItem.setPackage(visual, this.packageStack);
+        }
+        this.getEntityData().set(DATA_ITEM, visual);
     }
 
     public boolean isUnpack() {
@@ -376,6 +398,58 @@ public class CardboardPlaneEntity extends ThrowableItemProjectile {
             return serverLevel.getChunkSource().chunkMap.getDistanceManager()
                     .inEntityTickingRange(ChunkPos.asLong(blockPos));
         }
+        return false;
+    }
+
+    private boolean depotHasMatchingAddress(BlockPos depotPos) {
+        ItemStack stack = this.getPackage();
+        if (stack.isEmpty()) {
+            return false;
+        }
+
+        String packageAddress = PackageItem.getAddress(stack);
+        if (packageAddress.isBlank()) {
+            return false;
+        }
+
+        for (Direction direction : Direction.Plane.HORIZONTAL) {
+            BlockPos signPos = depotPos.relative(direction);
+            BlockState signState = level().getBlockState(signPos);
+            Block signBlock = signState.getBlock();
+            if (!(signBlock instanceof WallSignBlock)) {
+                continue;
+            }
+
+            Direction facing = signState.getValue(WallSignBlock.FACING);
+            if (facing.getOpposite() != direction) {
+                continue;
+            }
+
+            BlockEntity be = level().getBlockEntity(signPos);
+            if (!(be instanceof SignBlockEntity signEntity)) {
+                continue;
+            }
+
+            for (boolean front : new boolean[]{true, false}) {
+                SignText text = signEntity.getText(front);
+                StringBuilder addressBuilder = new StringBuilder();
+                for (Component component : text.getMessages(false)) {
+                    String line = component.getString().trim();
+                    if (!line.isEmpty()) {
+                        if (addressBuilder.length() > 0) {
+                            addressBuilder.append(' ');
+                        }
+                        addressBuilder.append(line);
+                    }
+                }
+
+                String signAddress = addressBuilder.toString().trim();
+                if (!signAddress.isEmpty() && PackageItem.matchAddress(packageAddress, signAddress)) {
+                    return true;
+                }
+            }
+        }
+
         return false;
     }
 
