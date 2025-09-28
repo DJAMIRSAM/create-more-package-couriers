@@ -3,12 +3,12 @@ package com.krei.cmpackagecouriers.plane;
 import com.krei.cmpackagecouriers.PackageCouriers;
 import com.krei.cmpackagecouriers.ServerConfig;
 import com.krei.cmpackagecouriers.marker.AddressMarkerHandler;
+import com.krei.cmpackagecouriers.plane.CardboardPlaneData;
 import com.simibubi.create.content.logistics.box.PackageItem;
 import com.simibubi.create.content.logistics.box.PackageStyles;
 import com.simibubi.create.foundation.item.render.SimpleCustomRenderer;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.NonNullList;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
@@ -17,7 +17,6 @@ import net.minecraft.world.InteractionResultHolder;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.*;
-import net.minecraft.world.item.component.ItemContainerContents;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.phys.Vec3;
@@ -44,11 +43,8 @@ public class CardboardPlaneItem extends Item implements EjectorLaunchEffect {
                 && !level.isClientSide()) {
 
             String address = getAddress(stack);
-            ItemStack packageItem;
-            ItemContainerContents container = stack.get(PackageCouriers.PLANE_PACKAGE);
-            if (container != null && container.getStackInSlot(0).getItem() instanceof PackageItem) {
-                packageItem = container.getStackInSlot(0);
-            } else {
+            ItemStack packageItem = CardboardPlaneData.getPackage(stack);
+            if (!(packageItem.getItem() instanceof PackageItem)) {
                 packageItem = PackageStyles.getRandomBox();
                 // TODO: Do some exception because this shouldn't happen
             }
@@ -57,8 +53,8 @@ public class CardboardPlaneItem extends Item implements EjectorLaunchEffect {
             if (server != null) {
                 CardboardPlaneEntity plane = new CardboardPlaneEntity(level);
                 plane.setPos(player.getX(), player.getEyeY()-0.1f, player.getZ());
-                plane.setPackage(packageItem);
-                plane.setUnpack(stack.getOrDefault(PackageCouriers.PRE_OPENED, false));
+                plane.setPackage(packageItem.copy());
+                plane.setUnpack(CardboardPlaneData.isPreOpened(stack));
                 plane.shootFromRotation(player, player.getXRot(), player.getYRot(), 0.0F, 0.8F, 1.0F);
 
                 ServerPlayer serverPlayer = server.getPlayerList().getPlayerByName(address);
@@ -115,11 +111,8 @@ public class CardboardPlaneItem extends Item implements EjectorLaunchEffect {
         };
 
         String address = getAddress(stack);
-        ItemStack packageItem;
-        ItemContainerContents container = stack.get(PackageCouriers.PLANE_PACKAGE);
-        if (container != null && container.getStackInSlot(0).getItem() instanceof PackageItem) {
-            packageItem = container.getStackInSlot(0);
-        } else {
+        ItemStack packageItem = CardboardPlaneData.getPackage(stack);
+        if (!(packageItem.getItem() instanceof PackageItem)) {
             packageItem = PackageStyles.getRandomBox();
             // TODO: Do some exception because this shouldn't happen
         }
@@ -128,8 +121,8 @@ public class CardboardPlaneItem extends Item implements EjectorLaunchEffect {
         if (server != null) {
             CardboardPlaneEntity plane = new CardboardPlaneEntity(level);
             plane.setPos(Vec3.atCenterOf(pos).add(0,1,0));
-            plane.setPackage(packageItem);
-            plane.setUnpack(stack.getOrDefault(PackageCouriers.PRE_OPENED, false));
+            plane.setPackage(packageItem.copy());
+            plane.setUnpack(CardboardPlaneData.isPreOpened(stack));
             plane.shootFromRotation(-37.5F, yaw, 0.0F, 0.8F, 1.0F);
 
             ServerPlayer serverPlayer = server.getPlayerList().getPlayerByName(address);
@@ -157,16 +150,13 @@ public class CardboardPlaneItem extends Item implements EjectorLaunchEffect {
 
     public static void setPackage(ItemStack plane, ItemStack box) {
         if (box.getItem() instanceof PackageItem) {
-            ItemContainerContents container = ItemContainerContents.fromItems(NonNullList.of(ItemStack.EMPTY, box.copy()));
-            plane.set(PackageCouriers.PLANE_PACKAGE, container);
+            CardboardPlaneData.setPackage(plane, box.copy());
         }
     }
 
     public static ItemStack getPackage(ItemStack plane) {
-        ItemContainerContents container = plane.get(PackageCouriers.PLANE_PACKAGE);
-        if (container == null)
-            return ItemStack.EMPTY;
-        return container.getStackInSlot(0);
+        ItemStack stored = CardboardPlaneData.getPackage(plane);
+        return stored.isEmpty() ? ItemStack.EMPTY : stored;
     }
 
     public static String getAddress(ItemStack plane) {
@@ -184,9 +174,8 @@ public class CardboardPlaneItem extends Item implements EjectorLaunchEffect {
 
     public static void setPreOpened(ItemStack plane, boolean preopened) {
         if (plane.getItem() instanceof CardboardPlaneItem
-                && plane.get(PackageCouriers.PLANE_PACKAGE) instanceof ItemContainerContents container
-                && PackageItem.isPackage(container.getStackInSlot(0))) {
-            plane.set(PackageCouriers.PRE_OPENED, preopened);
+                && PackageItem.isPackage(CardboardPlaneData.getPackage(plane))) {
+            CardboardPlaneData.setPreOpened(plane, preopened);
         }
     }
 
@@ -194,7 +183,7 @@ public class CardboardPlaneItem extends Item implements EjectorLaunchEffect {
     public void appendHoverText(ItemStack stack, TooltipContext context, List<Component> tooltipComponents, TooltipFlag tooltipFlag) {
         ItemStack box = getPackage(stack);
         if (box != null) {
-            if (stack.getOrDefault(PackageCouriers.PRE_OPENED, false))
+            if (CardboardPlaneData.isPreOpened(stack))
                 tooltipComponents.add(Component.translatable("tooltip.cmpackagecouriers.cardboard_plane.preopened")
                         .withStyle(ChatFormatting.AQUA));
             box.getItem().appendHoverText(box, context, tooltipComponents, tooltipFlag);

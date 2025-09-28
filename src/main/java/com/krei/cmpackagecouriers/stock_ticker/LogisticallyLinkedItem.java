@@ -5,14 +5,12 @@ import com.simibubi.create.foundation.blockEntity.behaviour.BlockEntityBehaviour
 import com.simibubi.create.foundation.utility.CreateLang;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
-import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.TooltipFlag;
-import net.minecraft.world.item.component.CustomData;
 import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.Level;
 import org.jetbrains.annotations.NotNull;
@@ -35,29 +33,26 @@ public class LogisticallyLinkedItem extends Item {
 	}
 
 	public static boolean isTuned(ItemStack pStack) {
-		return pStack.has(CMP_FREQ);
-	}
+                return PortableStockTickerData.hasFrequency(pStack);
+        }
 
-	@Nullable
-	public static UUID networkFromStack(ItemStack pStack) {
-		CompoundTag tag = pStack.getOrDefault(CMP_FREQ, CustomData.EMPTY).copyTag();
-		if (!tag.hasUUID("Freq"))
-			return null;
-		return tag.getUUID("Freq");
-	}
+        @Nullable
+        public static UUID networkFromStack(ItemStack pStack) {
+                return PortableStockTickerData.getFrequency(pStack);
+        }
 
 	@Override
 	public void appendHoverText(@NotNull ItemStack stack, @NotNull TooltipContext tooltipContext,
                                 @NotNull List<Component> tooltipComponents, @NotNull TooltipFlag tooltipFlag) {
 		super.appendHoverText(stack, tooltipContext, tooltipComponents, tooltipFlag);
 
-		CompoundTag tag = stack.getOrDefault(CMP_FREQ, CustomData.EMPTY).copyTag();
-		if (!tag.hasUUID("Freq"))
-			return;
+                UUID freq = PortableStockTickerData.getFrequency(stack);
+                if (freq == null)
+                        return;
 
-		CreateLang.translate("logistically_linked.tooltip")
-			.style(ChatFormatting.GOLD)
-			.addTo(tooltipComponents);
+                CreateLang.translate("logistically_linked.tooltip")
+                        .style(ChatFormatting.GOLD)
+                        .addTo(tooltipComponents);
 
 		CreateLang.translate("logistically_linked.tooltip_clear")
 			.style(ChatFormatting.GRAY)
@@ -93,15 +88,11 @@ public class LogisticallyLinkedItem extends Item {
 
 		player.displayClientMessage(tuned ? CreateLang.translateDirect("logistically_linked.connected")
 			: CreateLang.translateDirect("logistically_linked.new_network_started"), true);
-		return useOn;
-	}
+                return useOn;
+        }
 
-	public static void assignFrequency(ItemStack stack, Player player, UUID frequency) {
-		CompoundTag tag = stack.getOrDefault(CMP_FREQ, CustomData.EMPTY).copyTag();
-		tag.putUUID("Freq", frequency);
-
-		player.displayClientMessage(CreateLang.translateDirect("logistically_linked.tuned"), true);
-
-		stack.set(CMP_FREQ, CustomData.of(tag));
-	}
+        public static void assignFrequency(ItemStack stack, Player player, UUID frequency) {
+                player.displayClientMessage(CreateLang.translateDirect("logistically_linked.tuned"), true);
+                PortableStockTickerData.setFrequency(stack, frequency);
+        }
 }

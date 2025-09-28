@@ -23,7 +23,7 @@ import net.createmod.catnip.animation.LerpedFloat;
 import net.createmod.catnip.data.Couple;
 import net.createmod.catnip.gui.UIRenderHelper;
 import net.createmod.catnip.gui.element.GuiGameElement;
-import net.createmod.catnip.platform.CatnipServices;
+import com.krei.cmpackagecouriers.network.CMPackageCouriersNetwork;
 import net.createmod.catnip.theme.Color;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
@@ -1025,7 +1025,7 @@ public class PortableStockTickerScreen extends AbstractSimiContainerScreen<Porta
             order = new PackageOrderWithCrafts(order.orderedStacks(), craftList);
         }
 
-        CatnipServices.NETWORK.sendToServer(
+        CMPackageCouriersNetwork.sendToServer(
                 new SendPackage(GenericOrder.of(order),
                         addressBox.getValue()));
         menu.portableStockTicker.previouslyUsedAddress = addressBox.getValue();
@@ -1059,8 +1059,8 @@ public class PortableStockTickerScreen extends AbstractSimiContainerScreen<Porta
 
     @Override
     public void removed() {
-        CatnipServices.NETWORK.sendToServer(new HiddenCategoriesPacket(new ArrayList<>(hiddenCategories)));
-        CatnipServices.NETWORK.sendToServer(new SendPackage(GenericOrder.empty(), addressBox.getValue()));
+        CMPackageCouriersNetwork.sendToServer(new HiddenCategoriesPacket(new ArrayList<>(hiddenCategories)));
+        CMPackageCouriersNetwork.sendToServer(new SendPackage(GenericOrder.empty(), addressBox.getValue()));
         super.removed();
     }
 

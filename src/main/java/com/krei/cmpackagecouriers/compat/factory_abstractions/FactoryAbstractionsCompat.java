@@ -1,16 +1,25 @@
 package com.krei.cmpackagecouriers.compat.factory_abstractions;
 
-import net.minecraft.network.RegistryFriendlyByteBuf;
-import net.minecraft.network.codec.StreamCodec;
+import net.minecraft.network.FriendlyByteBuf;
 import ru.zznty.create_factory_abstractions.api.generic.stack.GenericStack;
 import ru.zznty.create_factory_abstractions.generic.stack.GenericStackSerializer;
 import ru.zznty.create_factory_abstractions.generic.support.GenericOrder;
 
 // Shamelessly copied from Create: Mobile Packages
 public class FactoryAbstractionsCompat {
-    public static final StreamCodec<RegistryFriendlyByteBuf, GenericOrder> GENERIC_ORDER_STREAM_CODEC =
-            StreamCodec.of((buffer, order) -> order.write(buffer), GenericOrder::read);
+    public static void writeGenericOrder(FriendlyByteBuf buffer, GenericOrder order) {
+        order.write(buffer);
+    }
 
-    public static final StreamCodec<RegistryFriendlyByteBuf, GenericStack> GENERIC_STACK_STREAM_CODEC =
-            StreamCodec.of((buffer, stack) -> GenericStackSerializer.write(stack, buffer), GenericStackSerializer::read);
+    public static GenericOrder readGenericOrder(FriendlyByteBuf buffer) {
+        return GenericOrder.read(buffer);
+    }
+
+    public static void writeGenericStack(FriendlyByteBuf buffer, GenericStack stack) {
+        GenericStackSerializer.write(stack, buffer);
+    }
+
+    public static GenericStack readGenericStack(FriendlyByteBuf buffer) {
+        return GenericStackSerializer.read(buffer);
+    }
 }

@@ -1,23 +1,17 @@
 package com.krei.cmpackagecouriers.stock_ticker;
 
-import net.createmod.catnip.net.base.ServerboundPacketPayload;
-import net.createmod.catnip.platform.CatnipServices;
-import net.minecraft.core.UUIDUtil;
-import net.minecraft.network.RegistryFriendlyByteBuf;
-import net.minecraft.network.codec.StreamCodec;
-import net.minecraft.server.level.ServerPlayer;
+import com.krei.cmpackagecouriers.network.CMPackageCouriersNetwork;
+import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.world.item.ItemStack;
+import net.neoforged.neoforge.network.NetworkEvent;
 
 import java.util.UUID;
+import java.util.function.Supplier;
 
 import static com.krei.cmpackagecouriers.stock_ticker.StockCheckingItem.getAccurateSummary;
 
 // Shamelessly copied from Create: Mobile Packages
-public class RequestStockUpdate implements ServerboundPacketPayload {
-    public static final StreamCodec<RegistryFriendlyByteBuf, RequestStockUpdate> STREAM_CODEC = StreamCodec.composite(
-            UUIDUtil.STREAM_CODEC, packet -> packet.networkId,
-            RequestStockUpdate::new
-    );
+public class RequestStockUpdate {
     private final UUID networkId;
 
     public RequestStockUpdate(UUID networkId) {
@@ -28,19 +22,28 @@ public class RequestStockUpdate implements ServerboundPacketPayload {
         this.networkId = networkId;
     }
 
-    @Override
-    public void handle(ServerPlayer player) {
-        if (player != null) {
-            ItemStack stack = PortableStockTicker.find(player.getInventory());
-            if (stack == null || stack.isEmpty()) return;
-
-            GenericStackListPacket responsePacket = new GenericStackListPacket(getAccurateSummary(stack).get());
-            CatnipServices.NETWORK.sendToClient(player, responsePacket);
-        }
+    public static void encode(RequestStockUpdate packet, FriendlyByteBuf buffer) {
+        buffer.writeUUID(packet.networkId);
     }
 
-    @Override
-    public PacketTypeProvider getTypeProvider() {
-        return PortableStockTickerReg.PortableStockTickerPackets.REQUEST_STOCK_UPDATE;
+    public static RequestStockUpdate decode(FriendlyByteBuf buffer) {
+        return new RequestStockUpdate(buffer.readUUID());
+    }
+
+    public static void handle(RequestStockUpdate packet, Supplier<NetworkEvent.Context> contextSupplier) {
+        NetworkEvent.Context context = contextSupplier.get();
+        context.enqueueWork(() -> {
+            if (context.getSender() == null) {
+                return;
+            }
+            ItemStack stack = PortableStockTicker.find(context.getSender().getInventory());
+            if (stack == null || stack.isEmpty()) {
+                return;
+            }
+
+            GenericStackListPacket responsePacket = new GenericStackListPacket(getAccurateSummary(stack).get());
+            CMPackageCouriersNetwork.sendToPlayer(responsePacket, context.getSender());
+        });
+        context.setPacketHandled(true);
     }
 }

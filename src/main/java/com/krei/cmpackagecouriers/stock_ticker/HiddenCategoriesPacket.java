@@ -1,45 +1,58 @@
 package com.krei.cmpackagecouriers.stock_ticker;
 
-import net.createmod.catnip.codecs.stream.CatnipStreamCodecBuilders;
-import net.createmod.catnip.net.base.ServerboundPacketPayload;
-import net.minecraft.network.RegistryFriendlyByteBuf;
-import net.minecraft.network.codec.ByteBufCodecs;
-import net.minecraft.network.codec.StreamCodec;
-import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.world.item.ItemStack;
+import net.neoforged.neoforge.network.NetworkEvent;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Supplier;
 
 // Shamelessly copied from Create: Mobile Packages
-public class HiddenCategoriesPacket implements ServerboundPacketPayload {
+public class HiddenCategoriesPacket {
 
-    public static final StreamCodec<RegistryFriendlyByteBuf, HiddenCategoriesPacket> STREAM_CODEC = StreamCodec.composite(
-            CatnipStreamCodecBuilders.list(ByteBufCodecs.INT), packet -> packet.indices,
-            HiddenCategoriesPacket::new
-    );
     private final List<Integer> indices;
 
     public HiddenCategoriesPacket(List<Integer> indices) {
         this.indices = indices;
     }
 
-    @Override
-    public void handle(ServerPlayer player) {
-                ItemStack stack = PortableStockTicker.find(player.getInventory());
-                if (stack == null) return;
-                if (stack.getItem() instanceof PortableStockTicker pst) {
-                    Map<UUID, List<Integer>> hiddenCategories = new HashMap<>();
-                    hiddenCategories.put(player.getUUID(), indices);
-                    pst.hiddenCategoriesByPlayer = hiddenCategories;
-                pst.saveHiddenCategoriesByPlayerToStack(stack, hiddenCategories);
-            }
+    public static void encode(HiddenCategoriesPacket packet, FriendlyByteBuf buffer) {
+        buffer.writeVarInt(packet.indices.size());
+        for (int index : packet.indices) {
+            buffer.writeVarInt(index);
+        }
     }
 
-    @Override
-    public PacketTypeProvider getTypeProvider() {
-        return PortableStockTickerReg.PortableStockTickerPackets.HIDDEN_CATEGORIES;
+    public static HiddenCategoriesPacket decode(FriendlyByteBuf buffer) {
+        int size = buffer.readVarInt();
+        List<Integer> indices = new ArrayList<>(size);
+        for (int i = 0; i < size; i++) {
+            indices.add(buffer.readVarInt());
+        }
+        return new HiddenCategoriesPacket(indices);
+    }
+
+    public static void handle(HiddenCategoriesPacket packet, Supplier<NetworkEvent.Context> contextSupplier) {
+        NetworkEvent.Context context = contextSupplier.get();
+        context.enqueueWork(() -> {
+            if (context.getSender() == null) {
+                return;
+            }
+            ItemStack stack = PortableStockTicker.find(context.getSender().getInventory());
+            if (stack == null) {
+                return;
+            }
+            if (stack.getItem() instanceof PortableStockTicker pst) {
+                Map<UUID, List<Integer>> hiddenCategories = new HashMap<>();
+                hiddenCategories.put(context.getSender().getUUID(), new ArrayList<>(packet.indices));
+                pst.hiddenCategoriesByPlayer = hiddenCategories;
+                pst.saveHiddenCategoriesByPlayerToStack(stack, hiddenCategories);
+            }
+        });
+        context.setPacketHandled(true);
     }
 }

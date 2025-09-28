@@ -6,23 +6,15 @@ import com.simibubi.create.content.logistics.packagerLink.LogisticallyLinkedBeha
 import com.simibubi.create.content.logistics.packagerLink.WiFiEffectPacket;
 import com.simibubi.create.foundation.advancement.AllAdvancements;
 import com.simibubi.create.foundation.utility.AdventureUtil;
-import net.createmod.catnip.net.base.ServerboundPacketPayload;
-import net.minecraft.network.RegistryFriendlyByteBuf;
-import net.minecraft.network.codec.ByteBufCodecs;
-import net.minecraft.network.codec.StreamCodec;
+import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
+import net.neoforged.neoforge.network.NetworkEvent;
 import ru.zznty.create_factory_abstractions.generic.support.GenericOrder;
 
 // Shamelessly copied from Create: Mobile Packages
-public class SendPackage implements ServerboundPacketPayload {
-
-    public static final StreamCodec<RegistryFriendlyByteBuf, SendPackage> STREAM_CODEC = StreamCodec.composite(
-            FactoryAbstractionsCompat.GENERIC_ORDER_STREAM_CODEC, packet -> packet.order,
-            ByteBufCodecs.STRING_UTF8, packet -> packet.address,
-            SendPackage::new
-    );
+public class SendPackage {
 
     private final GenericOrder order;
     private final String address;
@@ -30,6 +22,17 @@ public class SendPackage implements ServerboundPacketPayload {
     public SendPackage(GenericOrder order, String address) {
         this.order = order;
         this.address = address;
+    }
+
+    public static void encode(SendPackage packet, FriendlyByteBuf buffer) {
+        FactoryAbstractionsCompat.writeGenericOrder(buffer, packet.order);
+        buffer.writeUtf(packet.address);
+    }
+
+    public static SendPackage decode(FriendlyByteBuf buffer) {
+        GenericOrder order = FactoryAbstractionsCompat.readGenericOrder(buffer);
+        String address = buffer.readUtf();
+        return new SendPackage(order, address);
     }
 
     protected void applySettings(ServerPlayer player) {
@@ -47,18 +50,17 @@ public class SendPackage implements ServerboundPacketPayload {
         }
     }
 
-    @Override
-    public void handle(ServerPlayer player) {
-        if (player == null || player.isSpectator() || AdventureUtil.isAdventure(player))
-            return;
-        Level world = player.level();
-        if (!world.isLoaded(player.blockPosition()))
-            return;
-        applySettings(player);
-    }
-
-    @Override
-    public PacketTypeProvider getTypeProvider() {
-        return PortableStockTickerReg.PortableStockTickerPackets.LOGISTICS_PACKAGE_REQUEST;
+    public static void handle(SendPackage packet, java.util.function.Supplier<NetworkEvent.Context> contextSupplier) {
+        NetworkEvent.Context context = contextSupplier.get();
+        context.enqueueWork(() -> {
+            ServerPlayer player = context.getSender();
+            if (player == null || player.isSpectator() || AdventureUtil.isAdventure(player))
+                return;
+            Level world = player.level();
+            if (!world.isLoaded(player.blockPosition()))
+                return;
+            packet.applySettings(player);
+        });
+        context.setPacketHandled(true);
     }
 }

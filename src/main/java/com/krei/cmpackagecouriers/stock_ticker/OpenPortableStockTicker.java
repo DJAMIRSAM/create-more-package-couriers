@@ -1,30 +1,34 @@
 package com.krei.cmpackagecouriers.stock_ticker;
 
-import net.createmod.catnip.net.base.ServerboundPacketPayload;
-import net.minecraft.network.RegistryFriendlyByteBuf;
+import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.chat.Component;
-import net.minecraft.network.codec.StreamCodec;
-import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.SimpleMenuProvider;
+import net.neoforged.neoforge.network.NetworkEvent;
+
+import java.util.function.Supplier;
 
 // Shamelessly copied from Create: Mobile Packages
-public class OpenPortableStockTicker implements ServerboundPacketPayload {
-    public static final OpenPortableStockTicker INSTANCE = new OpenPortableStockTicker();
-    public static final StreamCodec<RegistryFriendlyByteBuf, OpenPortableStockTicker> STREAM_CODEC = StreamCodec.unit(INSTANCE);
-
+public class OpenPortableStockTicker {
     public OpenPortableStockTicker() {
     }
 
-    @Override
-    public void handle(ServerPlayer player) {
-        player.openMenu(new SimpleMenuProvider(
-                (id, inv, ply) -> new PortableStockTickerMenu(id, inv),
-                Component.translatable("item.cmpackagecouriers.portable_stock_ticker")
-        ));
+    public static void encode(OpenPortableStockTicker packet, FriendlyByteBuf buffer) {
     }
 
-    @Override
-    public PacketTypeProvider getTypeProvider() {
-        return PortableStockTickerReg.PortableStockTickerPackets.OPEN_PORTABLE_STOCK_TICKER;
+    public static OpenPortableStockTicker decode(FriendlyByteBuf buffer) {
+        return new OpenPortableStockTicker();
+    }
+
+    public static void handle(OpenPortableStockTicker packet, Supplier<NetworkEvent.Context> contextSupplier) {
+        NetworkEvent.Context context = contextSupplier.get();
+        context.enqueueWork(() -> {
+            if (context.getSender() != null) {
+                context.getSender().openMenu(new SimpleMenuProvider(
+                        (id, inv, ply) -> new PortableStockTickerMenu(id, inv),
+                        Component.translatable("item.cmpackagecouriers.portable_stock_ticker")
+                ));
+            }
+        });
+        context.setPacketHandled(true);
     }
 }

@@ -1,6 +1,6 @@
 package com.krei.cmpackagecouriers.stock_ticker;
 
-import net.createmod.catnip.platform.CatnipServices;
+import com.krei.cmpackagecouriers.network.CMPackageCouriersNetwork;
 import ru.zznty.create_factory_abstractions.api.generic.stack.GenericStack;
 
 import java.util.ArrayList;
@@ -21,7 +21,7 @@ public class ClientScreenStorage {
     }
 
     private static void update(UUID networkId) {
-        CatnipServices.NETWORK.sendToServer(new RequestStockUpdate(networkId));
+        CMPackageCouriersNetwork.sendToServer(new RequestStockUpdate(networkId));
     }
 
     public static void manualUpdate(UUID networkId) {

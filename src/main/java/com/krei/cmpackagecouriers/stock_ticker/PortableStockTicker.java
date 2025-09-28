@@ -118,22 +118,22 @@ public class PortableStockTicker extends StockCheckingItem {
 
     public void saveAddressToStack(ItemStack stack, String address) {
         if (address != null && !address.isEmpty()) {
-            stack.set(ADDRESS_TAG, address);
+            PortableStockTickerData.setAddress(stack, address);
         }
     }
 
     public String loadAddressFromStack(ItemStack stack) {
-        return stack.getOrDefault(ADDRESS_TAG, null);
+        return PortableStockTickerData.getAddress(stack);
     }
 
     public void saveCategoriesToStack(ItemStack stack, List<ItemStack> categories) {
         if (categories != null) {
-            stack.set(CATEGORIES, categories);
+            PortableStockTickerData.setCategories(stack, categories);
         }
     }
 
     public List<ItemStack> loadCategoriesFromStack(ItemStack stack) {
-        List<ItemStack> readCategories = new ArrayList<>(stack.getOrDefault(CATEGORIES, List.of()));
+        List<ItemStack> readCategories = new ArrayList<>(PortableStockTickerData.getCategories(stack));
         readCategories.removeIf(itemStack -> !itemStack.isEmpty() && !(itemStack.getItem() instanceof FilterItem));
         return readCategories;
     }
@@ -141,12 +141,12 @@ public class PortableStockTicker extends StockCheckingItem {
     public void saveHiddenCategoriesByPlayerToStack(ItemStack stack,
                                                     Map<UUID, List<Integer>> hiddenCategoriesByPlayer) {
         if (hiddenCategoriesByPlayer != null) {
-            stack.set(HIDDEN_CATEGORIES, hiddenCategoriesByPlayer);
+            PortableStockTickerData.setHiddenCategories(stack, hiddenCategoriesByPlayer);
         }
     }
 
     public Map<UUID, List<Integer>> getHiddenCategoriesByPlayerFromStack(ItemStack stack) {
-        return stack.getOrDefault(HIDDEN_CATEGORIES, new HashMap<>());
+        return PortableStockTickerData.getHiddenCategories(stack);
     }
 }
 
