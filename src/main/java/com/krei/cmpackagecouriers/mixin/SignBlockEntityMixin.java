@@ -25,10 +25,11 @@ public abstract class SignBlockEntityMixin {
     private static void tick(Level level, BlockPos pos, BlockState state, SignBlockEntity sign, CallbackInfo ci) {
         if (!level.isClientSide() && level.getGameTime()%5 != 2) {
             BlockPos targetPos;
-            if (state.getBlock() instanceof WallSignBlock)
+            if (state.getBlock() instanceof WallSignBlock) {
                 targetPos = pos.relative(state.getValue(FACING).getOpposite());
-            else
+            } else {
                 return;
+            }
 
             if (level.getBlockState(targetPos).getBlock() instanceof DepotBlock
                     && CardboardPlaneEntity.isChunkTicking(level, new Vec3(targetPos.getX(), targetPos.getY(), targetPos.getZ()))) {
