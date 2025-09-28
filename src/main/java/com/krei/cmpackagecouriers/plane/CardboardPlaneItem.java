@@ -8,7 +8,8 @@ import com.simibubi.create.content.logistics.box.PackageStyles;
 import com.simibubi.create.foundation.item.render.SimpleCustomRenderer;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.NonNullList;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
@@ -17,21 +18,20 @@ import net.minecraft.world.InteractionResultHolder;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.*;
-import net.minecraft.world.item.component.ItemContainerContents;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.phys.Vec3;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
-import net.neoforged.neoforge.client.extensions.common.IClientItemExtensions;
+import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.api.distmarker.OnlyIn;
+import net.minecraftforge.client.extensions.common.IClientItemExtensions;
 
 import java.util.List;
 import java.util.function.Consumer;
 
-// Copied and Altered from TridentItem
-// NOTE: Might need to remove projectileItem interface
-// NOTE: Using a compass with target in an item frame or placard to set a coordinate address
 public class CardboardPlaneItem extends Item implements EjectorLaunchEffect {
+
+    private static final String TAG_PACKAGE = PackageCouriers.TAG_PLANE_PACKAGE;
+    private static final String TAG_PREOPENED = PackageCouriers.TAG_PLANE_PREOPENED;
 
     public CardboardPlaneItem(Properties p) {
         super(p.stacksTo(1));
@@ -44,21 +44,14 @@ public class CardboardPlaneItem extends Item implements EjectorLaunchEffect {
                 && !level.isClientSide()) {
 
             String address = getAddress(stack);
-            ItemStack packageItem;
-            ItemContainerContents container = stack.get(PackageCouriers.PLANE_PACKAGE);
-            if (container != null && container.getStackInSlot(0).getItem() instanceof PackageItem) {
-                packageItem = container.getStackInSlot(0);
-            } else {
-                packageItem = PackageStyles.getRandomBox();
-                // TODO: Do some exception because this shouldn't happen
-            }
+            ItemStack packageItem = getOrCreatePackage(stack);
 
             MinecraftServer server = level.getServer();
             if (server != null) {
                 CardboardPlaneEntity plane = new CardboardPlaneEntity(level);
-                plane.setPos(player.getX(), player.getEyeY()-0.1f, player.getZ());
+                plane.setPos(player.getX(), player.getEyeY() - 0.1f, player.getZ());
                 plane.setPackage(packageItem);
-                plane.setUnpack(stack.getOrDefault(PackageCouriers.PRE_OPENED, false));
+                plane.setUnpack(isPreOpened(stack));
                 plane.shootFromRotation(player, player.getXRot(), player.getYRot(), 0.0F, 0.8F, 1.0F);
 
                 ServerPlayer serverPlayer = server.getPlayerList().getPlayerByName(address);
@@ -66,14 +59,17 @@ public class CardboardPlaneItem extends Item implements EjectorLaunchEffect {
                     plane.setTarget(serverPlayer);
                     level.addFreshEntity(plane);
                     stack.shrink(1);
-                } else {
-                    AddressMarkerHandler.MarkerTarget target = AddressMarkerHandler.getMarkerTarget(address);
-                    if (target != null && ServerConfig.planeLocationTargets) {
-                        plane.setTarget(target.pos, target.level);
-                        level.addFreshEntity(plane);
-                        stack.shrink(1);
-                    }
+                    return;
                 }
+
+                AddressMarkerHandler.MarkerTarget target = AddressMarkerHandler.getMarkerTarget(address);
+                if (target != null && ServerConfig.planeLocationTargets) {
+                    plane.setTarget(target.pos, target.level);
+                    level.addFreshEntity(plane);
+                    stack.shrink(1);
+                    return;
+                }
+
                 player.displayClientMessage(Component.translatable(PackageCouriers.MODID + ".message.no_address"), true);
             }
         }
@@ -81,15 +77,16 @@ public class CardboardPlaneItem extends Item implements EjectorLaunchEffect {
 
     @Override
     public InteractionResultHolder<ItemStack> use(Level level, Player player, InteractionHand hand) {
+        ItemStack plane = player.getItemInHand(hand);
         if (player.isCrouching()) {
-            ItemStack box = CardboardPlaneItem.getPackage(player.getItemInHand(hand));
-            player.getItemInHand(hand).shrink(1);
+            ItemStack box = CardboardPlaneItem.getPackage(plane);
+            plane.shrink(1);
             player.getInventory().placeItemBackInInventory(box);
             player.getInventory().placeItemBackInInventory(PackageCouriers.CARDBOARD_PLANE_PARTS_ITEM.asStack());
         } else {
             player.startUsingItem(hand);
         }
-        return InteractionResultHolder.consume(player.getItemInHand(hand));
+        return InteractionResultHolder.consume(plane);
     }
 
     @Override
@@ -115,21 +112,14 @@ public class CardboardPlaneItem extends Item implements EjectorLaunchEffect {
         };
 
         String address = getAddress(stack);
-        ItemStack packageItem;
-        ItemContainerContents container = stack.get(PackageCouriers.PLANE_PACKAGE);
-        if (container != null && container.getStackInSlot(0).getItem() instanceof PackageItem) {
-            packageItem = container.getStackInSlot(0);
-        } else {
-            packageItem = PackageStyles.getRandomBox();
-            // TODO: Do some exception because this shouldn't happen
-        }
+        ItemStack packageItem = getOrCreatePackage(stack);
 
         MinecraftServer server = level.getServer();
         if (server != null) {
             CardboardPlaneEntity plane = new CardboardPlaneEntity(level);
-            plane.setPos(Vec3.atCenterOf(pos).add(0,1,0));
+            plane.setPos(Vec3.atCenterOf(pos).add(0, 1, 0));
             plane.setPackage(packageItem);
-            plane.setUnpack(stack.getOrDefault(PackageCouriers.PRE_OPENED, false));
+            plane.setUnpack(isPreOpened(stack));
             plane.shootFromRotation(-37.5F, yaw, 0.0F, 0.8F, 1.0F);
 
             ServerPlayer serverPlayer = server.getPlayerList().getPlayerByName(address);
@@ -137,13 +127,13 @@ public class CardboardPlaneItem extends Item implements EjectorLaunchEffect {
                 plane.setTarget(serverPlayer);
                 level.addFreshEntity(plane);
                 return true;
-            } else {
-                AddressMarkerHandler.MarkerTarget target = AddressMarkerHandler.getMarkerTarget(address);
-                if (target != null && ServerConfig.planeLocationTargets) {
-                    plane.setTarget(target.pos, target.level);
-                    level.addFreshEntity(plane);
-                    return true;
-                }
+            }
+
+            AddressMarkerHandler.MarkerTarget target = AddressMarkerHandler.getMarkerTarget(address);
+            if (target != null && ServerConfig.planeLocationTargets) {
+                plane.setTarget(target.pos, target.level);
+                level.addFreshEntity(plane);
+                return true;
             }
         }
         return false;
@@ -156,22 +146,33 @@ public class CardboardPlaneItem extends Item implements EjectorLaunchEffect {
     }
 
     public static void setPackage(ItemStack plane, ItemStack box) {
+        CompoundTag tag = plane.getOrCreateTag();
         if (box.getItem() instanceof PackageItem) {
-            ItemContainerContents container = ItemContainerContents.fromItems(NonNullList.of(ItemStack.EMPTY, box.copy()));
-            plane.set(PackageCouriers.PLANE_PACKAGE, container);
+            CompoundTag packageTag = new CompoundTag();
+            box.save(packageTag);
+            tag.put(TAG_PACKAGE, packageTag);
+            tag.remove(TAG_PREOPENED);
         }
     }
 
     public static ItemStack getPackage(ItemStack plane) {
-        ItemContainerContents container = plane.get(PackageCouriers.PLANE_PACKAGE);
-        if (container == null)
-            return ItemStack.EMPTY;
-        return container.getStackInSlot(0);
+        CompoundTag tag = plane.getTag();
+        if (tag != null && tag.contains(TAG_PACKAGE, Tag.TAG_COMPOUND)) {
+            return ItemStack.of(tag.getCompound(TAG_PACKAGE));
+        }
+        return ItemStack.EMPTY;
+    }
+
+    private static ItemStack getOrCreatePackage(ItemStack plane) {
+        ItemStack packageItem = getPackage(plane);
+        if (packageItem.isEmpty() || !(packageItem.getItem() instanceof PackageItem)) {
+            packageItem = PackageStyles.getRandomBox();
+        }
+        return packageItem.copy();
     }
 
     public static String getAddress(ItemStack plane) {
         if (plane.getItem() instanceof CardboardPlaneItem) {
-            // added handling of @ in address to alow adress chaining and identifying player names
             String address = PackageItem.getAddress(getPackage(plane));
             int atIndex = address.indexOf('@');
             if (atIndex != -1) {
@@ -184,23 +185,27 @@ public class CardboardPlaneItem extends Item implements EjectorLaunchEffect {
 
     public static void setPreOpened(ItemStack plane, boolean preopened) {
         if (plane.getItem() instanceof CardboardPlaneItem
-                && plane.get(PackageCouriers.PLANE_PACKAGE) instanceof ItemContainerContents container
-                && PackageItem.isPackage(container.getStackInSlot(0))) {
-            plane.set(PackageCouriers.PRE_OPENED, preopened);
+                && PackageItem.isPackage(getPackage(plane))) {
+            plane.getOrCreateTag().putBoolean(TAG_PREOPENED, preopened);
         }
+    }
+
+    public static boolean isPreOpened(ItemStack plane) {
+        CompoundTag tag = plane.getTag();
+        return tag != null && tag.getBoolean(TAG_PREOPENED);
     }
 
     @Override
     public void appendHoverText(ItemStack stack, TooltipContext context, List<Component> tooltipComponents, TooltipFlag tooltipFlag) {
         ItemStack box = getPackage(stack);
-        if (box != null) {
-            if (stack.getOrDefault(PackageCouriers.PRE_OPENED, false))
+        if (!box.isEmpty()) {
+            if (isPreOpened(stack))
                 tooltipComponents.add(Component.translatable("tooltip.cmpackagecouriers.cardboard_plane.preopened")
                         .withStyle(ChatFormatting.AQUA));
             box.getItem().appendHoverText(box, context, tooltipComponents, tooltipFlag);
-        }
-        else
+        } else {
             super.appendHoverText(stack, context, tooltipComponents, tooltipFlag);
+        }
     }
 
     @SuppressWarnings("removal")

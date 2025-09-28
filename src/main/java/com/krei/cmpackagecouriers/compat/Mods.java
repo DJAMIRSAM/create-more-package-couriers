@@ -7,7 +7,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.level.ItemLike;
 import net.minecraft.world.level.block.Block;
-import net.neoforged.fml.ModList;
+import net.minecraftforge.fml.ModList;
 
 import java.util.Optional;
 import java.util.function.Supplier;
@@ -29,7 +29,7 @@ public enum Mods {
     }
 
     public ResourceLocation rl(String path) {
-        return ResourceLocation.fromNamespaceAndPath(id, path);
+        return new ResourceLocation(id, path);
     }
 
     public Block getBlock(String id) {

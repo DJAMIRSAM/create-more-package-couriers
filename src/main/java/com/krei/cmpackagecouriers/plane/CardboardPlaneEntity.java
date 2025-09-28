@@ -18,7 +18,6 @@ import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
@@ -31,19 +30,14 @@ import net.minecraft.world.item.Items;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
-import net.neoforged.fml.ModList;
-import net.neoforged.neoforge.items.ItemStackHandler;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.nbt.Tag;
+import net.minecraftforge.fml.ModList;
+import net.minecraftforge.items.ItemStackHandler;
 
 import javax.annotation.Nullable;
-import java.util.Collections;
 import java.util.UUID;
 
-// NOTE: Maybe replace synced entity data with a normal field
-// TODO: sync targetPos to increase entity update interval
-// TODO: NonNull targetPos and targetPosLevel
-// TODO: Use the Ender Pearl chunk loading mechanic
-// NOTE: We could implement this by adding functionality to ejectors
-// NOTE: We could implement this by using still entities and rendering ghosts
 public class CardboardPlaneEntity extends Projectile {
     private static final EntityDataAccessor<ItemStack> DATA_ITEM = SynchedEntityData
             .defineId(CardboardPlaneEntity.class, EntityDataSerializers.ITEM_STACK);
@@ -69,7 +63,6 @@ public class CardboardPlaneEntity extends Projectile {
         return new CardboardPlaneEntity(entityType, level);
     }
 
-    // NOTE: Might require own implementation for noclip and to avoid unnecessary nbt data
     @Override
     public void tick() {
         super.tick();
@@ -81,10 +74,10 @@ public class CardboardPlaneEntity extends Projectile {
         this.updateRotation();
         this.setPos(d0, d1, d2);
         this.oldDeltaYaw = this.newDeltaYaw;
-        this.newDeltaYaw = this.yRotO-this.getYRot();
+        this.newDeltaYaw = this.yRotO - this.getYRot();
 
         if (level().isClientSide()) {
-            if (this.tickCount%3 == 0) {
+            if (this.tickCount % 3 == 0) {
                 Vec3 lookAngle = this.getLookAngle().scale(0.5);
                 this.level()
                         .addParticle(
@@ -97,7 +90,7 @@ public class CardboardPlaneEntity extends Projectile {
                                 this.random.nextGaussian() * 0.05
                         );
             }
-            return; // Don't do flight calculations on clientside
+            return;
         }
 
         if (targetEntityUUID != null && targetEntityCached == null) {
@@ -115,7 +108,6 @@ public class CardboardPlaneEntity extends Projectile {
         }
         if (targetPos == null) {
             remove(RemovalReason.DISCARDED);
-            // TODO: Drop package, invalid state
             return;
         }
 
@@ -132,15 +124,15 @@ public class CardboardPlaneEntity extends Projectile {
 
         Vec3 vecFrom = this.getDeltaMovement().normalize();
         Vec3 vecTo;
-        if (targetPosLevel != level().dimension()) {  // Target not in the same dimension
+        if (targetPosLevel != level().dimension()) {
             vecTo = this.getDeltaMovement().normalize();
-        } else if (!targetPos.closerThan(this.position(), 80)) {  // Target is far, fly upwards in the general direction
+        } else if (!targetPos.closerThan(this.position(), 80)) {
             vecTo = targetPos.subtract(this.position());
-            vecTo = new Vec3(vecTo.x(), vecTo.y() + vecTo.length()/2, vecTo.z()).normalize();
+            vecTo = new Vec3(vecTo.x(), vecTo.y() + vecTo.length() / 2, vecTo.z()).normalize();
         } else {
             vecTo = targetPos.subtract(this.position()).normalize();
         }
-        float augmentedDistance = (float)targetPos.subtract(this.position()).length() + Math.max(0, 80 - this.tickCount);
+        float augmentedDistance = (float) targetPos.subtract(this.position()).length() + Math.max(0, 80 - this.tickCount);
         float clampedDistance = Mth.clamp(augmentedDistance, 5, 60);
         float curveAmount = Mth.lerp((clampedDistance - 5f) / 55f, 0.4f, 0.06f);
         this.setDeltaMovement(vecFrom.lerp(vecTo, curveAmount).normalize().scale(this.speed));
@@ -169,18 +161,14 @@ public class CardboardPlaneEntity extends Projectile {
                     } else if (isChunkTicking(tpLevel, targetPos)) {
                         tpVec = targetPos;
                     } else {
-//                        PackageCouriers.LOGGER.debug("Target Not Loaded");
                         remove(RemovalReason.DISCARDED);
                         return;
                     }
 
-                    if (targetPosLevel != level().dimension()) {  // Target not in the same dimension
-                        // NOTE: Maybe set the proper rotations?
-                        teleportTo(tpLevel, tpVec.x(), tpVec.y(), tpVec.z(), Collections.emptySet(), this.getYRot(), this.getXRot());
-//                        PackageCouriers.LOGGER.debug("TP: " + tpLevel + " " + tpVec);
+                    if (targetPosLevel != level().dimension()) {
+                        this.teleportTo(tpLevel, tpVec.x(), tpVec.y(), tpVec.z());
                     } else {
-                        teleportTo(tpVec.x(), tpVec.y(), tpVec.z());
-//                        PackageCouriers.LOGGER.debug("TP: " + tpVec);
+                        this.teleportTo(tpVec.x(), tpVec.y(), tpVec.z());
                     }
                     this.setDeltaMovement(targetPos.subtract(this.position()).normalize().scale(this.speed));
                 }
@@ -190,29 +178,24 @@ public class CardboardPlaneEntity extends Projectile {
         if (this.tickCount > 400) {
             if (level() instanceof ServerLevel serverLevel && this.targetPosLevel != null) {
                 ServerLevel tpLevel = serverLevel.getServer().getLevel(this.targetPosLevel);
-                teleportTo(tpLevel, targetPos.x(), targetPos.y(), targetPos.z(), Collections.emptySet(), this.getYRot(), this.getXRot());
+                this.teleportTo(tpLevel, targetPos.x(), targetPos.y(), targetPos.z());
                 PackageCouriers.LOGGER.debug("Timeout: " + targetPos);
             } else {
-                remove(RemovalReason.DISCARDED);  // Illegal State, break
+                remove(RemovalReason.DISCARDED);
             }
         }
-//
-//        if (this.tickCount%10 == 0) {
-//            PackageCouriers.LOGGER.debug(this.targetPos+"");
-//        }
     }
 
     protected void onReachedTarget() {
-        if (targetEntityCached != null  // Assumes entity is cached
+        if (targetEntityCached != null
                 && targetEntityCached instanceof Player player) {
             if (!level().isClientSide()) {
                 if (unpack) {
                     ItemStackHandler stacks = PackageItem.getContents(this.getPackage());
                     for (int slot = 0; slot < stacks.getSlots(); slot++) {
                         ItemStack stack = stacks.getStackInSlot(slot);
-                        PackageCouriers.LOGGER.debug(stack+"");
                         if (ModList.get().isLoaded("cmpackagepipebomb")
-                                &&PackagePipebombCompat.isRigged(stack)) {
+                                && PackagePipebombCompat.isRigged(stack)) {
                             PackagePipebombCompat.spawnRigged(stack, level(), this.getX(), this.getY(), this.getZ());
                         } else {
                             player.getInventory().placeItemBackInInventory(stack);
@@ -224,13 +207,12 @@ public class CardboardPlaneEntity extends Projectile {
             }
         } else if (targetPos != null) {
             if (!level().isClientSide()) {
-                BlockPos blockPos = new BlockPos((int)Math.floor(this.targetPos.x()), (int)Math.floor(this.targetPos.y()), (int)Math.floor(this.targetPos.z()));
+                BlockPos blockPos = new BlockPos((int) Math.floor(this.targetPos.x()), (int) Math.floor(this.targetPos.y()), (int) Math.floor(this.targetPos.z()));
                 if (level().getBlockState(blockPos).getBlock() instanceof DepotBlock
                         && level().getBlockEntity(blockPos) instanceof DepotBlockEntity depot
                         && depot.getHeldItem().is(Items.AIR)) {
                     depot.setHeldItem(this.getPackage());
                     depot.notifyUpdate();
-                    //TODO: Belts and hoppers as targets
                 } else {
                     level().addFreshEntity(PackageEntity.fromItemStack(level(), this.position(), this.getPackage()));
                 }
@@ -239,8 +221,6 @@ public class CardboardPlaneEntity extends Projectile {
 
         ParticleOptions particleOption = new ItemParticleOption(ParticleTypes.ITEM, AllItems.CARDBOARD.asStack());
 
-        // TODO: particles spawned at client instead to avoid graphics latency
-        // NOTE: figure out why Explosion.finalizeExplosion is invoked at client but Explosion.explode doesn't
         if (level() instanceof ServerLevel serverLevel) {
             serverLevel.sendParticles(
                     particleOption,
@@ -256,7 +236,7 @@ public class CardboardPlaneEntity extends Projectile {
         level().playSound(
                 null,
                 this.position().x(), this.position().y(), this.position().z(),
-                SoundEvents.WIND_CHARGE_BURST.value(),
+                SoundEvents.ENDER_EYE_LAUNCH,
                 SoundSource.NEUTRAL,
                 1.0F,
                 0.75F
@@ -285,15 +265,16 @@ public class CardboardPlaneEntity extends Projectile {
     }
 
     @Override
-    protected void defineSynchedData(SynchedEntityData.Builder builder) {
-        builder.define(DATA_ITEM, ItemStack.EMPTY);
+    protected void defineSynchedData() {
+        this.entityData.define(DATA_ITEM, ItemStack.EMPTY);
     }
 
     @Override
     public void readAdditionalSaveData(CompoundTag compoundTag) {
         super.readAdditionalSaveData(compoundTag);
-        ItemStack box = ItemStack.parseOptional(level().registryAccess(), compoundTag.getCompound("Box"));
-        this.setPackage(box);
+        if (compoundTag.contains("Box", Tag.TAG_COMPOUND)) {
+            this.setPackage(ItemStack.of(compoundTag.getCompound("Box")));
+        }
 
         if (compoundTag.hasUUID("TargetEntity")) {
             targetEntityUUID = compoundTag.getUUID("TargetEntity");
@@ -302,10 +283,10 @@ public class CardboardPlaneEntity extends Projectile {
             double y = compoundTag.getDouble("TargetPosY");
             double z = compoundTag.getDouble("TargetPosZ");
             targetPos = new Vec3(x, y, z);
-        } else if (compoundTag.contains("Unpack")) {
+        }
+
+        if (compoundTag.contains("Unpack")) {
             unpack = compoundTag.getBoolean("Unpack");
-        } else {
-            // Illegal state
         }
 
         refreshDimensions();
@@ -315,7 +296,9 @@ public class CardboardPlaneEntity extends Projectile {
     public void addAdditionalSaveData(CompoundTag compoundTag) {
         super.addAdditionalSaveData(compoundTag);
         ItemStack box = this.getPackage();
-        compoundTag.put("Box", box.saveOptional(level().registryAccess()));
+        CompoundTag boxTag = new CompoundTag();
+        box.save(boxTag);
+        compoundTag.put("Box", boxTag);
         compoundTag.putBoolean("Unpack", unpack);
 
         if (targetEntityUUID != null) {
@@ -324,8 +307,6 @@ public class CardboardPlaneEntity extends Projectile {
             compoundTag.putDouble("TargetPosX", targetPos.x());
             compoundTag.putDouble("TargetPosY", targetPos.y());
             compoundTag.putDouble("TargetPosZ", targetPos.z());
-        } else {
-            // Illegal State
         }
     }
 
@@ -335,7 +316,7 @@ public class CardboardPlaneEntity extends Projectile {
 
     public void setPackage(ItemStack stack) {
         if (stack.getItem() instanceof PackageItem)
-            this.getEntityData().set(DATA_ITEM, stack);
+            this.getEntityData().set(DATA_ITEM, stack.copy());
     }
 
     public boolean isUnpack() {
@@ -356,7 +337,7 @@ public class CardboardPlaneEntity extends Projectile {
 
     public static boolean isChunkTicking(Level level, Vec3 pos) {
         if (level instanceof ServerLevel serverLevel) {
-            BlockPos blockPos = new BlockPos((int) pos.x(),(int)  pos.y(),(int)  pos.z());
+            BlockPos blockPos = new BlockPos((int) pos.x(), (int) pos.y(), (int) pos.z());
             return serverLevel.getChunkSource().chunkMap.getDistanceManager()
                     .inEntityTickingRange(ChunkPos.asLong(blockPos));
         }

@@ -10,7 +10,7 @@ import net.minecraft.resources.ResourceLocation;
 // Shamelessly copied from Create: Mobile Packages
 @JeiPlugin
 public class JEICompat implements IModPlugin{
-    private static final ResourceLocation ID = ResourceLocation.fromNamespaceAndPath(PackageCouriers.MODID, "jei_plugin");
+    private static final ResourceLocation ID = new ResourceLocation(PackageCouriers.MODID, "jei_plugin");
 
     public static IJeiRuntime runtime;
 

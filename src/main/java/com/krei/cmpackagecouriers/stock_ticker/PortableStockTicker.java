@@ -8,6 +8,7 @@ import com.simibubi.create.content.logistics.stockTicker.StockTickerBlockEntity;
 import net.createmod.catnip.nbt.NBTHelper;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
@@ -24,7 +25,6 @@ import java.util.*;
 
 import static com.krei.cmpackagecouriers.stock_ticker.PortableStockTickerReg.*;
 
-// Shamelessly copied from Create: Mobile Packages
 public class PortableStockTicker extends StockCheckingItem {
 
     public Map<UUID, List<Integer>> hiddenCategoriesByPlayer;
@@ -38,19 +38,16 @@ public class PortableStockTicker extends StockCheckingItem {
     }
 
     public static ItemStack find(Inventory playerInventory) {
-        // Check the main hand first
         ItemStack pst = playerInventory.player.getMainHandItem();
         if (playerInventory.player.getMainHandItem().getItem() instanceof PortableStockTicker) {
             return pst;
         }
-        // take first PST in inventory
         for (int i = 0; i < playerInventory.getContainerSize(); i++) {
             ItemStack portableStockTicker = playerInventory.getItem(i);
             if (playerInventory.getItem(i).getItem() instanceof PortableStockTicker) {
                 return portableStockTicker;
             }
         }
-        // no PST found
         return null;
     }
 
@@ -62,9 +59,9 @@ public class PortableStockTicker extends StockCheckingItem {
 
         if (player instanceof ServerPlayer) {
             ItemStack itemStack = PortableStockTicker.find(player.getInventory());
-                if (itemStack != null && itemStack.getItem() instanceof PortableStockTicker) {
-                    saveAddressToStack(itemStack, address);
-                }
+            if (itemStack != null && itemStack.getItem() instanceof PortableStockTicker) {
+                saveAddressToStack(itemStack, address);
+            }
         }
         return result;
     }
@@ -118,22 +115,41 @@ public class PortableStockTicker extends StockCheckingItem {
 
     public void saveAddressToStack(ItemStack stack, String address) {
         if (address != null && !address.isEmpty()) {
-            stack.set(ADDRESS_TAG, address);
+            stack.getOrCreateTag().putString(TAG_ADDRESS, address);
         }
     }
 
     public String loadAddressFromStack(ItemStack stack) {
-        return stack.getOrDefault(ADDRESS_TAG, null);
+        CompoundTag tag = stack.getTag();
+        if (tag != null && tag.contains(TAG_ADDRESS, Tag.TAG_STRING)) {
+            return tag.getString(TAG_ADDRESS);
+        }
+        return null;
     }
 
     public void saveCategoriesToStack(ItemStack stack, List<ItemStack> categories) {
         if (categories != null) {
-            stack.set(CATEGORIES, categories);
+            ListTag list = new ListTag();
+            for (ItemStack category : categories) {
+                CompoundTag itemTag = new CompoundTag();
+                category.save(itemTag);
+                list.add(itemTag);
+            }
+            stack.getOrCreateTag().put(TAG_CATEGORIES, list);
         }
     }
 
     public List<ItemStack> loadCategoriesFromStack(ItemStack stack) {
-        List<ItemStack> readCategories = new ArrayList<>(stack.getOrDefault(CATEGORIES, List.of()));
+        List<ItemStack> readCategories = new ArrayList<>();
+        CompoundTag tag = stack.getTag();
+        if (tag != null && tag.contains(TAG_CATEGORIES, Tag.TAG_LIST)) {
+            ListTag listTag = tag.getList(TAG_CATEGORIES, Tag.TAG_COMPOUND);
+            for (Tag element : listTag) {
+                if (element instanceof CompoundTag compoundTag) {
+                    readCategories.add(ItemStack.of(compoundTag));
+                }
+            }
+        }
         readCategories.removeIf(itemStack -> !itemStack.isEmpty() && !(itemStack.getItem() instanceof FilterItem));
         return readCategories;
     }
@@ -141,12 +157,34 @@ public class PortableStockTicker extends StockCheckingItem {
     public void saveHiddenCategoriesByPlayerToStack(ItemStack stack,
                                                     Map<UUID, List<Integer>> hiddenCategoriesByPlayer) {
         if (hiddenCategoriesByPlayer != null) {
-            stack.set(HIDDEN_CATEGORIES, hiddenCategoriesByPlayer);
+            ListTag list = new ListTag();
+            hiddenCategoriesByPlayer.forEach((uuid, values) -> {
+                CompoundTag entry = new CompoundTag();
+                entry.putUUID("Player", uuid);
+                entry.putIntArray("Categories", values.stream().mapToInt(Integer::intValue).toArray());
+                list.add(entry);
+            });
+            stack.getOrCreateTag().put(TAG_HIDDEN_CATEGORIES, list);
         }
     }
 
     public Map<UUID, List<Integer>> getHiddenCategoriesByPlayerFromStack(ItemStack stack) {
-        return stack.getOrDefault(HIDDEN_CATEGORIES, new HashMap<>());
+        Map<UUID, List<Integer>> map = new HashMap<>();
+        CompoundTag tag = stack.getTag();
+        if (tag != null && tag.contains(TAG_HIDDEN_CATEGORIES, Tag.TAG_LIST)) {
+            ListTag list = tag.getList(TAG_HIDDEN_CATEGORIES, Tag.TAG_COMPOUND);
+            for (Tag element : list) {
+                if (element instanceof CompoundTag entry && entry.hasUUID("Player")) {
+                    UUID uuid = entry.getUUID("Player");
+                    int[] ints = entry.getIntArray("Categories");
+                    List<Integer> values = new ArrayList<>(ints.length);
+                    for (int i : ints) {
+                        values.add(i);
+                    }
+                    map.put(uuid, values);
+                }
+            }
+        }
+        return map;
     }
 }
-

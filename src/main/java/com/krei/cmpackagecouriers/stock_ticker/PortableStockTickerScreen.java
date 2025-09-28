@@ -640,7 +640,7 @@ public class PortableStockTickerScreen extends AbstractSimiContainerScreen<Porta
                                             .clientProvider().guiHandler()
                                             .tooltipBuilder(entry.get().key(), entry.get().amount()));
             if (recipeHovered && !lines.isEmpty())
-                lines.set(0, CreateLang.translateDirect("gui.stock_keeper.craft", lines.getFirst()
+                lines.set(0, CreateLang.translateDirect("gui.stock_keeper.craft", lines.get(0)
                         .copy()));
             graphics.renderComponentTooltip(font, lines, mouseX, mouseY);
         }

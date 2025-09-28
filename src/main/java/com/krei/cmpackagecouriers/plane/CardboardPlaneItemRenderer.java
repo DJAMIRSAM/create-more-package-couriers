@@ -25,17 +25,16 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Blocks;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
-import net.neoforged.fml.ModList;
+import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.api.distmarker.OnlyIn;
+import net.minecraftforge.fml.ModList;
 
 import java.util.HashMap;
 import java.util.Map;
 
 @OnlyIn(Dist.CLIENT)
 public class CardboardPlaneItemRenderer extends CustomRenderedItemModelRenderer {
-    public static final PartialModel DELIVERY_PLANE = PartialModel.of(ResourceLocation.fromNamespaceAndPath(PackageCouriers.MODID,
-            "item/cardboard_plane"));
+    public static final PartialModel DELIVERY_PLANE = PartialModel.of(new ResourceLocation(PackageCouriers.MODID, "item/cardboard_plane"));
     public static final Map<ResourceLocation, PartialModel> PACKAGE_ROPE = new HashMap<>();
 
     static {
@@ -47,7 +46,7 @@ public class CardboardPlaneItemRenderer extends CustomRenderedItemModelRenderer 
 
     public static ResourceLocation getRopeModel(int width, int height) {
         String size = width + "x" + height;
-        return ResourceLocation.fromNamespaceAndPath(PackageCouriers.MODID, "item/rope_" + size);
+        return new ResourceLocation(PackageCouriers.MODID, "item/rope_" + size);
     }
 
 
@@ -57,7 +56,6 @@ public class CardboardPlaneItemRenderer extends CustomRenderedItemModelRenderer 
         if (box.isEmpty() || !PackageItem.isPackage(box))
             box = PackageStyles.getDefaultBox();
 
-        // TODO: Simplify
         ms.pushPose();
 
         if (transformType == ItemDisplayContext.GUI) {

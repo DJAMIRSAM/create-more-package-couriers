@@ -3,10 +3,10 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.InteractionHand;
-import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
-import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent.RightClickBlock;
-import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.fml.common.EventBusSubscriber;
+import net.minecraftforge.event.entity.player.PlayerInteractEvent;
+import net.minecraftforge.eventbus.api.EventPriority;
+import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.fml.common.Mod;
 import net.minecraft.core.BlockPos;
 
 import static com.krei.cmpackagecouriers.PackageCouriers.MODID;
@@ -16,8 +16,7 @@ import com.simibubi.create.content.logistics.stockTicker.StockTickerInteractionH
 import com.simibubi.create.content.logistics.tableCloth.ShoppingListItem;
 import com.simibubi.create.content.processing.burner.BlazeBurnerBlock;
 
-// copied from DadudeGaming/Create.Mobile.packages.Unofficial under MIT License
-@EventBusSubscriber(modid = MODID)
+@Mod.EventBusSubscriber(modid = MODID, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public class StockTickerIntegration {
 
     private static void rewriteAddressIfNeeded(Player player, ItemStack heldItem) {
@@ -31,7 +30,7 @@ public class StockTickerIntegration {
         }
     }
 
-    @SubscribeEvent(priority = net.neoforged.bus.api.EventPriority.HIGHEST)
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onRightClickEntity(PlayerInteractEvent.EntityInteractSpecific event) {
         if (!ServerConfig.shopAddressReplacement) return;
         if (event.getLevel().isClientSide()) {
@@ -53,8 +52,8 @@ public class StockTickerIntegration {
         }
     }
 
-    @SubscribeEvent(priority = net.neoforged.bus.api.EventPriority.HIGHEST)
-    public static void onRightClickBlock(RightClickBlock event) {
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
+    public static void onRightClickBlock(PlayerInteractEvent.RightClickBlock event) {
         if (!ServerConfig.shopAddressReplacement) return;
         if (event.getLevel().isClientSide()) {
             return;
@@ -69,7 +68,6 @@ public class StockTickerIntegration {
             return;
         }
 
-        // Check if the block is a Blaze Burner
         if (event.getLevel().getBlockState(pos).getBlock() instanceof BlazeBurnerBlock) {
             rewriteAddressIfNeeded(player, heldItem);
         }

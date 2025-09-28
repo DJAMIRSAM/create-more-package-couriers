@@ -6,8 +6,8 @@ import net.createmod.catnip.net.base.ClientboundPacketPayload;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
+import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.api.distmarker.OnlyIn;
 import ru.zznty.create_factory_abstractions.api.generic.stack.GenericStack;
 
 import java.util.List;

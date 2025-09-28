@@ -4,15 +4,15 @@ import com.krei.cmpackagecouriers.PackageCouriers;
 import com.simibubi.create.content.logistics.box.PackageItem;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.Level;
-import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.fml.common.EventBusSubscriber;
-import net.neoforged.neoforge.event.tick.ServerTickEvent;
+import net.minecraftforge.event.TickEvent;
+import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.fml.common.Mod;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.util.*;
 
-@EventBusSubscriber(modid=PackageCouriers.MODID)
+@Mod.EventBusSubscriber(modid = PackageCouriers.MODID, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public class AddressMarkerHandler {
 
     public static Map<MarkerTarget, MarkerTarget> markerMap = new HashMap<>();
@@ -24,12 +24,14 @@ public class AddressMarkerHandler {
             marker.resetTimeout();
         } else {
             markerMap.put(marker, marker);
-//            PackageCouriers.LOGGER.debug("Added: " + marker);
         }
     }
 
     @SubscribeEvent
-    public static void serverTick(ServerTickEvent.Post event) {
+    public static void serverTick(TickEvent.ServerTickEvent event) {
+        if (event.phase != TickEvent.Phase.END)
+            return;
+
         Iterator<Map.Entry<MarkerTarget, MarkerTarget>> iterator = markerMap.entrySet().iterator();
         while (iterator.hasNext()) {
             Map.Entry<MarkerTarget, MarkerTarget> entry = iterator.next();
@@ -37,14 +39,12 @@ public class AddressMarkerHandler {
 
             if (marker.tickAndCheckTimeout()) {
                 iterator.remove();
-//                PackageCouriers.LOGGER.debug("Removed: " + marker);
             }
         }
     }
 
     @Nullable
     public static MarkerTarget getMarkerTarget(String address) {
-        // Linear search is good enough
         for (MarkerTarget marker : markerMap.values()) {
             if (PackageItem.matchAddress(address, marker.address)) {
                 return marker;
@@ -81,7 +81,7 @@ public class AddressMarkerHandler {
             if (!(obj instanceof MarkerTarget other)) return false;
 
             return Objects.equals(pos, other.pos) &&
-                    Objects.equals(level.dimension(), other.level.dimension()) && // compare by dimension
+                    Objects.equals(level.dimension(), other.level.dimension()) &&
                     Objects.equals(address, other.address);
         }
 
