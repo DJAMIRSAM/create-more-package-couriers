@@ -30,18 +30,18 @@ public class BeltDeployerCallbacksMixin {
         if (collect != null
                 && !collect.isEmpty()
                 && PackageItem.isPackage(transported.stack)
-                && PackageCouriers.CARDBOARD_PLANE_PARTS_ITEM.isIn(blockEntity.getPlayer().getMainHandItem())
-                && collect.getFirst().stack.getItem() instanceof CardboardPlaneItem) {
-            CardboardPlaneItem.setPackage(collect.getFirst().stack, transported.stack);
+                && blockEntity.getPlayer().getMainHandItem().is(PackageCouriers.CARDBOARD_PLANE_PARTS_ITEM.get())
+                && collect.get(0).stack.getItem() instanceof CardboardPlaneItem) {
+            CardboardPlaneItem.setPackage(collect.get(0).stack, transported.stack);
         }
 
         if (collect != null
                 && !collect.isEmpty()
                 && transported.stack.getItem() instanceof CardboardPlaneItem
                 && blockEntity.getPlayer().getMainHandItem().is(Items.SHEARS)
-                && collect.getFirst().stack.getItem() instanceof CardboardPlaneItem) {
-            collect.getFirst().stack = transported.stack.copy();
-            CardboardPlaneItem.setPreOpened(collect.getFirst().stack, true);
+                && collect.get(0).stack.getItem() instanceof CardboardPlaneItem) {
+            collect.get(0).stack = transported.stack.copy();
+            CardboardPlaneItem.setPreOpened(collect.get(0).stack, true);
         }
     }
 }

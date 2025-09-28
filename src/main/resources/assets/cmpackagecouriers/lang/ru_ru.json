@@ -24,14 +24,5 @@
   "cmpackagecouriers.ponder.receiving_planes.text_10": "Если указанного на коробке адреса не существует, весовая катапульта выбрасывает самолётик как обычный предмет",
 
   "cmpackagecouriers.message.inbound": "К вам приближается заказанная коробка",
-  "cmpackagecouriers.message.no_address": "Целевой адрес не найден",
-
-  "item.cmpackagecouriers.portable_stock_ticker": "Портативный складской тикер",
-  "item.cmpackagecouriers.portable_stock_ticker.screen_title": "Портативный складской тикер",
-  "item.cmpackagecouriers.portable_stock_ticker.not_linked": "Не подключено к сети",
-  "item.cmpackagecouriers.portable_stock_ticker.tooltip.summary": "Предоставляет возможность _просматривать содержимое_ привязанной складской сети и _заказывать предметы_ — без надобности в кладовщиках.",
-  "item.cmpackagecouriers.portable_stock_ticker.tooltip.condition1": "ПКМ крадучись по складскому передатчику или тикеру",
-  "item.cmpackagecouriers.portable_stock_ticker.tooltip.behaviour1": "Привязывает портативный складской тикер к _складской сети_.",
-  "item.cmpackagecouriers.portable_stock_ticker.tooltip.condition2": "ПКМ с предметом",
-  "item.cmpackagecouriers.portable_stock_ticker.tooltip.behaviour2": "Открывает _интерфейс_."
+  "cmpackagecouriers.message.no_address": "Целевой адрес не найден"
 }
